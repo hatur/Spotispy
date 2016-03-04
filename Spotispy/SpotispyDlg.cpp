@@ -41,7 +41,7 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	SetIcon(m_hIcon, FALSE);
 
 	// TODO: Additional initialization
-	CString windowTitles;
+	SetWindowText(std::wstring{L"Spotispy - " + SPOTISPY_VERSION}.c_str());
 
 	CheckRadioButton(IDC_RADIO_MUTEADS, IDC_RADIO_LOWVOLADS, IDC_RADIO_MUTEADS);
 
@@ -61,7 +61,9 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	}
 
 	auto* saveTwitchInfoCheckBtn = static_cast<CButton*>(GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
-	saveTwitchInfoCheckBtn->SetCheck(1);
+	saveTwitchInfoCheckBtn->SetCheck(0);
+
+	m_saveTwitchInfo = saveTwitchInfoCheckBtn->GetCheck() == 1;
 
 	auto* twitchSavePatternEdit = static_cast<CEdit*>(GetDlgItem(IDC_EDIT_TWITCH_FORMAT));
 	twitchSavePatternEdit->SetWindowText(CString{m_twitchFormat.c_str()});

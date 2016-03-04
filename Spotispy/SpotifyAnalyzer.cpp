@@ -20,8 +20,6 @@ SpotifyAnalyzer::SpotifyAnalyzer(CWnd* mainWindow, std::shared_ptr<CommonCOM> co
 		m_adsBehavior = EAdsBehavior::LowerVolume;
 	}
 
-	auto* saveTwitchInfoCheckBtn = static_cast<CButton*>(m_mainWindow->GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
-
 	m_webHook = std::make_unique<SpotifyWebHook>();
 }
 
@@ -32,43 +30,48 @@ SpotifyAnalyzer::~SpotifyAnalyzer() {
 }
 
 void SpotifyAnalyzer::Analyze() {
+	bool spotifyRunning = IsSpotifyRunning();
+
 	if (!m_spotifyAudioInitialized) {
-		if (!InitSpotifyAudioContext()) {
-			return;
+		if (spotifyRunning) {
+			if (!InitSpotifyAudioContext()) {
+				m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify started, start playing a song..");
+				return;
+			}
 		}
 	}
 
 	// Save the volume .. in case it was changed
-	if (!IsAdPlaying()) {
+	if (m_spotifyAudioInitialized && !IsAdPlaying()) {
 		float audioVolume;
 		m_spotifyAudio->GetMasterVolume(&audioVolume);
 
 		m_savedVolume = audioVolume;
 	}
 
+	EMetaDataStatus metaDataStatus = EMetaDataStatus::NoData;
+
 	if (m_webHook->IsInitialized()) {
-		bool hasMetaData;
-
-		std::tie(hasMetaData, m_metaData) = m_webHook->GetMetaData();
-
-		if (hasMetaData) {
-			// Only updates the EDIT to let us see the song in the application
-			std::wstring fullTitle{m_metaData->m_artistName + L" - " + m_metaData->m_trackName + L" (" + m_metaData->m_albumName + L")"};
-			m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{fullTitle.c_str()});
-
-			bool adPlaying = IsAdPlaying();
-
-			if (!m_muted && adPlaying) {
-				OnAdStatusChanged();
-			}
-			else if (m_muted && !adPlaying) {
-				OnAdStatusChanged();
-			}
-
-			m_muted = adPlaying;
-		}
+		std::tie(metaDataStatus, m_metaData) = m_webHook->GetMetaData();
 	}
-	else {
+
+	if (metaDataStatus == EMetaDataStatus::Success) {
+		// Only updates the EDIT to let us see the song in the application
+		std::wstring fullTitle{m_metaData->m_artistName + L" - " + m_metaData->m_trackName + L" (" + m_metaData->m_albumName + L")"};
+		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{fullTitle.c_str()});
+
+		bool adPlaying = IsAdPlaying();
+
+		if (m_spotifyAudioInitialized && !m_muted && adPlaying) {
+			OnAdStatusChanged();
+		}
+		else if (m_spotifyAudioInitialized && m_muted && !adPlaying) {
+			OnAdStatusChanged();
+		}
+
+		m_muted = adPlaying;
+	}
+	else if (!spotifyRunning) {
 		if (m_spotifyAudio != nullptr) {
 			m_spotifyAudio->Release();
 			m_spotifyAudio = nullptr;
@@ -76,6 +79,9 @@ void SpotifyAnalyzer::Analyze() {
 		m_spotifyAudioInitialized = false;
 
 		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify not started!");
+	}
+	else if (metaDataStatus == EMetaDataStatus::ErrorRetrieving) {
+		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, std::wstring{L"Error: " + m_webHook->GetStatusMessage()}.c_str());
 	}
 }
 
@@ -86,34 +92,13 @@ void SpotifyAnalyzer::RestoreDefaults() noexcept {
 	}
 }
 
-bool SpotifyAnalyzer::HasFocus() const noexcept {
-	return m_focus;
-}
-
-bool SpotifyAnalyzer::IsSpotifyRunning() noexcept {
-	return Helper::IsProcessRunning(L"spotify.exe", true);
-}
-
-bool SpotifyAnalyzer::IsWebHelperRunning() noexcept {
-	return Helper::IsProcessRunning(L"spotifywebhelper.exe", true);
-}
-
-std::wstring SpotifyAnalyzer::GetCurrentlyPlayingTrack() const noexcept {
-	CString dialogTemp;
-	m_mainWindow->GetDlgItemText(IDC_EDIT_SONG_SPOTIFY, dialogTemp);
-
-	return std::wstring{dialogTemp};
-}
-
-const SpotifyMetaData* SpotifyAnalyzer::GetMetaData() const noexcept {
-	return m_metaData.get();
-}
-
 void SpotifyAnalyzer::HandleHook() noexcept {
-	if (m_webHook->IsInitialized()) {
+	bool processRunning = IsSpotifyRunning();
+
+	if (m_webHook->IsInitialized() && processRunning) {
 		m_webHook->RefreshMetaData();
 	}
-	else if (!m_webHook->IsInitialized() && !m_webHook->IsInitializationOngoing()) {
+	else if (!m_webHook->IsInitialized() && processRunning) {
 		m_webHook->Init();
 	}
 }
@@ -234,6 +219,10 @@ void SpotifyAnalyzer::OnAdStatusChanged() noexcept {
 	}
 }
 
+bool SpotifyAnalyzer::HasFocus() const noexcept {
+	return m_focus;
+}
+
 bool SpotifyAnalyzer::IsAdPlaying() const noexcept {
 	if (m_metaData == nullptr) {
 		return false;
@@ -241,4 +230,23 @@ bool SpotifyAnalyzer::IsAdPlaying() const noexcept {
 	else {
 		return m_metaData->m_isAd;
 	}
+}
+
+bool SpotifyAnalyzer::IsSpotifyRunning() noexcept {
+	return Helper::IsProcessRunning(L"spotify.exe", true);
+}
+
+bool SpotifyAnalyzer::IsWebHelperRunning() noexcept {
+	return Helper::IsProcessRunning(L"spotifywebhelper.exe", true);
+}
+
+std::wstring SpotifyAnalyzer::GetCurrentlyPlayingTrack() const noexcept {
+	CString dialogTemp;
+	m_mainWindow->GetDlgItemText(IDC_EDIT_SONG_SPOTIFY, dialogTemp);
+
+	return std::wstring{dialogTemp};
+}
+
+const SpotifyMetaData* SpotifyAnalyzer::GetMetaData() const noexcept {
+	return m_metaData.get();
 }

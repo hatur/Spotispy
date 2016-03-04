@@ -3,37 +3,88 @@
 
 #include <array>
 
+#include "SpotispyDlg.h"
+#include "Helper.h"
+
 SpotifyWebHook::SpotifyWebHook() {
 	Init();
 }
 
-bool SpotifyWebHook::IsInitialized() const noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-	return m_hookInitialized;
-}
+void SpotifyWebHook::Init() {
+	using namespace web::http;
+	using namespace web::http::client;
 
-bool SpotifyWebHook::IsInitializationOngoing() const noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-	return m_hookInitRunning;
-}
-
-std::wstring SpotifyWebHook::GetStatusMessage() const noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-	return m_statusMessage;
-}
-
-void SpotifyWebHook::NotifySpotifyClosed() noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-}
-
-std::tuple<bool, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData() const noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-	if (!m_metaDataInitialized) {
-		return std::make_tuple(false, nullptr);
+	{
+		std::lock_guard<std::mutex> lock{m_mutex};
+		if (m_hookInitRunning) {
+			return;
+		}
+		else {
+			m_hookInitRunning = true;
+		}
 	}
 
-	// We have to return a copy because else it is not thread safe
-	return std::make_tuple(true, std::make_unique<SpotifyMetaData>(m_bufferedMetaData));
+	const std::wstring letters{L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"};
+
+	auto randomWChar = [&letters] {
+		std::random_device randD;
+
+		return letters[randD() % letters.size()];
+	};
+
+	// Need to use braced ctor here
+	std::wstring rndHostName(10, 0);
+
+	std::generate_n(rndHostName.begin(), 10, randomWChar);
+
+	http_client client(L"https://open.spotify.com/token");
+
+	// Make the request and asynchronously process the response.
+	client.request(methods::GET).then([this, rndHostName] (http_response response) {
+		if (response.status_code() == status_codes::OK) {
+			auto jsonData = response.extract_json().get();
+
+			auto port = GetWorkingPort(rndHostName);
+			m_localHost = GenerateLocalHostURL(rndHostName, port);
+
+			if (!SetupOAuth(std::move(jsonData))) {
+				throw std::exception{"Couldn't read OAuth token"};
+			}
+			if (!SetupCSRF()) {
+				throw std::exception{"Couldn't read CSRF token"};
+			}
+
+			{
+				std::lock_guard<std::mutex> lock{m_mutex};
+				m_hookInitialized = true;
+				m_hookInitRunning = false;
+			}
+		}
+		else {
+			std::lock_guard<std::mutex> lock{m_mutex};
+			m_statusMessage = L"Couldn't establish connection to https://spotify.com";
+			m_hookInitialized = false;
+		}
+	}).then([this] (pplx::task<void> task) {
+		try {
+			task.get();
+		}
+		catch (const std::exception& ex) {
+			std::wostringstream errMsg;
+			errMsg << ex.what() << std::endl;
+
+			std::lock_guard<std::mutex> lock{m_mutex};
+			m_statusMessage = std::move(errMsg.str());
+			m_hookInitRunning = false;
+			m_hookInitialized = false;
+		}
+	});
+}
+
+void SpotifyWebHook::Uninitialize() {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	m_hookInitialized = false;
+	m_metaDataInitialized = false;
 }
 
 void SpotifyWebHook::RefreshMetaData() noexcept {
@@ -56,7 +107,34 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 			if (response.status_code() == status_codes::OK) {
 				auto jsonData = response.extract_json().get().as_object();
 
-				// We do full exception safety garantuee, so we create a new object and if we successfully read all json values we move it into the buffered
+				if (jsonData.find(L"error") != jsonData.end()) {
+					// The page we got through the WebHelper is describing an error, we uninitialize the connection and
+					// set the status message to error to be able to view it in the App, yet we don't exactly determine
+					// the error, the source and possible solutions for it, should we do so? (TODO)
+					Uninitialize();
+
+					{
+						std::lock_guard<std::mutex> lock{m_mutex};
+						auto type = m_statusMessage = jsonData.at(L"error").as_object().at(L"type").as_string();
+						if (type == L"4102") {
+							// 4102 is invalid OAuth token, which makes no sense to me since it's always the same
+							// This should be ill-described and we just tell the user to restart Spotify because
+							// this is the only known way to solve it?
+							m_statusMessage = std::wstring{L"Error validating OAuth token, try to restart Spotify"};
+						}
+						else {
+							m_statusMessage = jsonData.at(L"error").as_object().at(L"message").as_string();
+						}
+						m_metaDataInitialized = false;
+						m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
+					}
+
+					return;
+				}
+
+				// We always need to return this, even if fields are missing (which they are, when ads are playing)
+				// So we can either check the fields and return what we have or we check only the fields that are present
+				// while Ads are playing.. TODO: Optimization
 				SpotifyMetaData metaData{};
 
 				if (jsonData.find(L"version") != jsonData.end()) {
@@ -127,6 +205,7 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 				{
 					std::lock_guard<std::mutex> lock{m_mutex};
 					m_metaDataInitialized = true;
+					m_metaDataStatus = EMetaDataStatus::Success;
 					m_bufferedMetaData = std::move(metaData);
 				}
 			}
@@ -134,8 +213,14 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 			try {
 				task.get();
 			}
-			catch (const std::exception&) {
+			catch (const std::exception& ex) {
+				std::wostringstream errMsg;
+				errMsg << ex.what() << std::endl;
 
+				std::lock_guard<std::mutex> lock{m_mutex};
+				m_metaDataInitialized = false;
+				m_statusMessage = errMsg.str();
+				m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
 			}
 
 			// Indicate that task is finished, ready for a new one..
@@ -143,75 +228,6 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 			m_metaDataTaskFinished = true;
 		});;
 	}
-}
-
-void SpotifyWebHook::Init() {
-	using namespace web::http;
-	using namespace web::http::client;
-
-	if (m_hookInitRunning) {
-		return;
-	}
-	else {
-		std::lock_guard<std::mutex> lock{m_mutex};
-		m_hookInitRunning = true;
-	}
-
-	const std::wstring letters{L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"};
-
-	auto randomWChar = [&letters] {
-		std::random_device randD;
-
-		return letters[randD() % letters.size()];
-	};
-
-	// Need to use braced ctor here
-	std::wstring rndHostName(10, 0);
-
-	std::generate_n(rndHostName.begin(), 10, randomWChar);
-
-	http_client client(L"https://open.spotify.com/token");
-
-	// Make the request and asynchronously process the response.
-	client.request(methods::GET).then([this, rndHostName] (http_response response) {
-		if (response.status_code() == status_codes::OK) {
-			auto jsonData = response.extract_json().get();
-
-			auto port = GetWorkingPort(rndHostName);
-			m_localHost = GenerateLocalHostURL(rndHostName, port);
-
-			if (!SetupOAuth(std::move(jsonData))) {
-				throw std::exception{"Couldn't read OAuth token"};
-			}
-			if (!SetupCSRF()) {
-				throw std::exception{"Couldn't read CSRF token"};
-			}
-
-			{
-				std::lock_guard<std::mutex> lock{m_mutex};
-				m_hookInitialized = true;
-				m_hookInitRunning = false;
-			}
-		}
-		else {
-			std::lock_guard<std::mutex> lock{m_mutex};
-			m_statusMessage = L"Couldn't establish connection to https://spotify.com";
-			m_hookInitialized = false;
-		}
-	}).then([this] (pplx::task<void> task) {
-		try {
-			task.get();
-		}
-		catch (const std::exception& ex) {
-			std::wostringstream errMsg;
-			errMsg << ex.what() << std::endl;
-
-			std::lock_guard<std::mutex> lock{m_mutex};
-			m_statusMessage = std::move(errMsg.str());
-			m_hookInitRunning = false;
-			m_hookInitialized = false;
-		}
-	});
 }
 
 unsigned int SpotifyWebHook::GetWorkingPort(const std::wstring& rndHostName) const {
@@ -320,6 +336,46 @@ bool SpotifyWebHook::SetupCSRF() {
 	return true;
 }
 
-bool SpotifyWebHook::CheckFields(const web::json::object & jsonData) {
-	return false;
+bool SpotifyWebHook::IsInitialized() const noexcept {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	return m_hookInitialized;
 }
+
+bool SpotifyWebHook::IsInitializationOngoing() const noexcept {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	return m_hookInitRunning;
+}
+
+std::wstring SpotifyWebHook::GetStatusMessage() const noexcept {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	return m_statusMessage;
+}
+
+std::tuple<EMetaDataStatus, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData() const noexcept {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	if (m_metaDataStatus == EMetaDataStatus::ErrorRetrieving) {
+		return std::make_tuple(m_metaDataStatus, nullptr);
+	}
+	else if (!m_metaDataInitialized) {
+		return std::make_tuple(EMetaDataStatus::NoData, nullptr);
+	}
+
+	// We have to return a copy because else it is not thread safe
+	return std::make_tuple(EMetaDataStatus::Success, std::make_unique<SpotifyMetaData>(m_bufferedMetaData));
+}
+
+//bool SpotifyWebHook::IsWebHelperRunning() const noexcept {
+//	return Helper::IsProcessRunning(L"spotifywebhelper.exe", true);
+//}
+//
+//bool SpotifyWebHook::InitWebHelper() const noexcept {
+//	LPWSTR folderPath;
+//	HRESULT hr = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, 0, &folderPath);
+//
+//	if (hr != S_OK) {
+//		MessageBox(0, L"Error, couldn't determine %APPDATA% folder, this program needs Windows Vista or later!", L"Error", MB_ICONERROR);
+//		std::terminate();
+//	}
+//
+//	// TODO: Do we still need to manually start the web helper?
+//}
