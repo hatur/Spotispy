@@ -42,10 +42,30 @@ void SpotifyWebHook::Init() {
 	// Make the request and asynchronously process the response.
 	client.request(methods::GET).then([this, rndHostName] (http_response response) {
 		if (response.status_code() == status_codes::OK) {
+			bool isJson = false;
+
+			auto headers = response.headers();
+			auto it = headers.find(L"Content-Type");
+			if (it != headers.end()) {
+				auto data = it->second.data();
+
+				if (std::wstring{data}.find(L"application/json") != std::wstring::npos) {
+					isJson = true;
+				}
+			}
+
+			if (!isJson) {
+				return;
+			}
+
 			auto jsonData = response.extract_json().get();
 
 			auto port = GetWorkingPort(rndHostName);
-			m_localHost = GenerateLocalHostURL(rndHostName, port);
+
+			{
+				std::lock_guard<std::mutex> lock{m_mutex};
+				m_localHost = GenerateLocalHostURL(rndHostName, port);
+			}
 
 			if (!SetupOAuth(std::move(jsonData))) {
 				throw std::exception{"Couldn't read OAuth token"};
@@ -57,7 +77,6 @@ void SpotifyWebHook::Init() {
 			{
 				std::lock_guard<std::mutex> lock{m_mutex};
 				m_hookInitialized = true;
-				m_hookInitRunning = false;
 			}
 		}
 		else {
@@ -75,8 +94,12 @@ void SpotifyWebHook::Init() {
 
 			std::lock_guard<std::mutex> lock{m_mutex};
 			m_statusMessage = std::move(errMsg.str());
-			m_hookInitRunning = false;
 			m_hookInitialized = false;
+		}
+
+		{
+			std::lock_guard<std::mutex> lock{m_mutex};
+			m_hookInitRunning = false;
 		}
 	});
 }
@@ -103,9 +126,43 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 		m_metaDataTaskFinished = false;
 
 		http_client client(m_localHost + L"/remote/status.json?oauth=" + m_oauth + L"&csrf=" + m_csrf);
-		client.request(methods::GET).then([this] (http_response response) {
+		client.request(methods::GET).then([this] (http_response response) -> pplx::task<web::json::value> {
 			if (response.status_code() == status_codes::OK) {
-				auto jsonData = response.extract_json().get().as_object();
+				bool isJson = false;
+
+				auto headers = response.headers();
+				auto it = headers.find(L"Content-Type");
+				if (it != headers.end()) {
+					auto data = it->second.data();
+
+					if (std::wstring{data}.find(L"application/json") != std::wstring::npos) {
+						isJson = true;
+					}
+				}
+
+				if (!isJson) {
+					std::lock_guard<std::mutex> lock{m_mutex};
+					m_metaDataInitialized = false;
+					m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
+					return pplx::task_from_result(web::json::value());
+				}
+
+				return response.extract_json();
+			}
+			else {
+				return pplx::task_from_result(web::json::value());
+			}
+		}).then([this] (pplx::task<web::json::value> previousTask) {
+			try {
+				const auto& jsonDataTask = previousTask.get();
+				auto jsonData = jsonDataTask.as_object();
+
+				if (jsonData.size() == 0) {
+					std::lock_guard<std::mutex> lock{m_mutex};
+					m_metaDataInitialized = false;
+					m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
+					m_metaDataTaskFinished = true;
+				}
 
 				if (jsonData.find(L"error") != jsonData.end()) {
 					// The page we got through the WebHelper is describing an error, we uninitialize the connection and
@@ -127,6 +184,7 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 						}
 						m_metaDataInitialized = false;
 						m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
+						m_metaDataTaskFinished = true;
 					}
 
 					return;
@@ -209,24 +267,18 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 					m_bufferedMetaData = std::move(metaData);
 				}
 			}
-		}).then([this] (pplx::task<void> task) {
-			try {
-				task.get();
-			}
 			catch (const std::exception& ex) {
 				std::wostringstream errMsg;
 				errMsg << ex.what() << std::endl;
 
 				std::lock_guard<std::mutex> lock{m_mutex};
 				m_metaDataInitialized = false;
-				m_statusMessage = errMsg.str();
 				m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
 			}
 
-			// Indicate that task is finished, ready for a new one..
 			std::lock_guard<std::mutex> lock{m_mutex};
 			m_metaDataTaskFinished = true;
-		});;
+		});
 	}
 }
 
@@ -299,7 +351,10 @@ bool SpotifyWebHook::SetupOAuth(web::json::value&& jsonData) {
 			return letter == '\"';
 		}), oauth.end());
 
-		m_oauth = std::move(oauth);
+		{
+			std::lock_guard<std::mutex> lock{m_mutex};
+			m_oauth = std::move(oauth);
+		}
 
 		// Kinda ugly but it is only one line, TODO?
 		return true;
@@ -331,7 +386,10 @@ bool SpotifyWebHook::SetupCSRF() {
 
 	auto val = jsonData.at(L"token").as_string();
 
-	m_csrf = std::move(val);
+	{
+		std::lock_guard<std::mutex> lock{m_mutex};
+		m_csrf = std::move(val);
+	}
 
 	return true;
 }

@@ -35,10 +35,22 @@ void SpotifyAnalyzer::Analyze() {
 	if (!m_spotifyAudioInitialized) {
 		if (spotifyRunning) {
 			if (!InitSpotifyAudioContext()) {
+				// This sometimes happens, Spotify is for some reason started but the the audio context is not yet initialized,
+				// it will be there if music starts playing
 				m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify started, start playing a song..");
 				return;
 			}
 		}
+	}
+
+	if (!spotifyRunning && m_spotifyAudioInitialized) {
+		if (m_spotifyAudio != nullptr) {
+			m_spotifyAudio->Release();
+			m_spotifyAudio = nullptr;
+		}
+		m_spotifyAudioInitialized = false;
+
+		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify not started!");
 	}
 
 	// Save the volume .. in case it was changed
@@ -70,15 +82,6 @@ void SpotifyAnalyzer::Analyze() {
 		}
 
 		m_muted = adPlaying;
-	}
-	else if (!spotifyRunning) {
-		if (m_spotifyAudio != nullptr) {
-			m_spotifyAudio->Release();
-			m_spotifyAudio = nullptr;
-		}
-		m_spotifyAudioInitialized = false;
-
-		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify not started!");
 	}
 	else if (metaDataStatus == EMetaDataStatus::ErrorRetrieving) {
 		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, std::wstring{L"Error: " + m_webHook->GetStatusMessage()}.c_str());
