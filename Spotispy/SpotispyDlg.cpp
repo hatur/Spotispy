@@ -82,8 +82,7 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	m_spotifyAnalyzer->Analyze();
 
 	SetTimer(1, 50, nullptr);
-	SetTimer(2, 500, nullptr);	// 
-	SetTimer(3, 100, nullptr);	// Play Info
+	SetTimer(2, 100, nullptr);	// Play Info
 
 	return TRUE;
 }
@@ -125,9 +124,6 @@ void CSpotispyDlg::OnTimer(UINT nIDEvent) {
 		m_spotifyAnalyzer->Analyze();
 	}
 	else if (nIDEvent == 2) {
-		m_spotifyAnalyzer->HandleHook();
-	}
-	else if (nIDEvent == 3) {
 		if (m_saveTwitchInfo) {
 			auto metaData = m_spotifyAnalyzer->GetMetaData();
 			if (metaData != nullptr && m_spotifyAnalyzer->HasFocus() && m_spotifyAnalyzer->IsSpotifyRunning() && !m_spotifyAnalyzer->IsAdPlaying()) {

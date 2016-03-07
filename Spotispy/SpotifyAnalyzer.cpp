@@ -43,6 +43,7 @@ void SpotifyAnalyzer::Analyze() {
 		}
 	}
 
+	// De-Init audio
 	if (!spotifyRunning && m_spotifyAudioInitialized) {
 		if (m_spotifyAudio != nullptr) {
 			m_spotifyAudio->Release();
@@ -69,10 +70,19 @@ void SpotifyAnalyzer::Analyze() {
 
 	auto statusMessages = m_webHook->FetchStatusMessages();
 
-	if (metaDataRetrievalSuccess) {
+	if (m_webHook->DoesSpotfiyNeedARestart()) {
+		// We can't do shit about this..
+		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Problem with OAuth, restart Spotfiy..");
+	}
+	else if (metaDataRetrievalSuccess) {
 		// Only updates the EDIT to let us see the song in the application
-		std::wstring fullTitle{m_metaData->m_artistName + L" - " + m_metaData->m_trackName + L" (" + m_metaData->m_albumName + L")"};
-		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{fullTitle.c_str()});
+		if (m_metaData->m_isAd) {
+			m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Waiting for ad to finish..");
+		}
+		else {
+			std::wstring fullTitle{m_metaData->m_artistName + L" - " + m_metaData->m_trackName + L" (" + m_metaData->m_albumName + L")"};
+			m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{fullTitle.c_str()});
+		}
 
 		bool adPlaying = IsAdPlaying();
 
@@ -85,6 +95,11 @@ void SpotifyAnalyzer::Analyze() {
 
 		m_muted = adPlaying;
 	}
+	else if (!metaDataRetrievalSuccess) {
+		if (statusMessages.size() > 0) {
+			m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{statusMessages.back().c_str()});
+		}
+	}
 }
 
 void SpotifyAnalyzer::RestoreDefaults() noexcept {
@@ -92,17 +107,6 @@ void SpotifyAnalyzer::RestoreDefaults() noexcept {
 		m_spotifyAudio->SetMute(0, 0);
 		m_spotifyAudio->SetMasterVolume(m_savedVolume, 0);
 	}
-}
-
-void SpotifyAnalyzer::HandleHook() noexcept {
-	//bool processRunning = IsSpotifyRunning();
-
-	//if (m_webHook->IsInitialized() && processRunning) {
-	//	m_webHook->RefreshMetaData();
-	//}
-	//else if (!m_webHook->IsInitialized() && processRunning) {
-	//	m_webHook->Init();
-	//}
 }
 
 void SpotifyAnalyzer::SetFocus(bool focus) noexcept {

@@ -261,6 +261,7 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 unsigned int SpotifyWebHook::GetWorkingPort() const {
 	using namespace Poco;
 	using namespace Poco::Net;
+	using namespace Poco::JSON;
 
 	unsigned int port = 4371;
 	const unsigned int maxPort = 4379;
@@ -283,13 +284,25 @@ unsigned int SpotifyWebHook::GetWorkingPort() const {
 
 				HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
 				HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
+				request.set("Origin", "https://open.spotify.com");
 				HTTPResponse response;
 
 				session.sendRequest(request);
 
-				if (response.getStatus() == HTTPResponse::HTTP_OK) {
-					working = true;
+				if (response.getStatus() != HTTPResponse::HTTP_OK) {
+					throw std::exception();
 				}
+
+				// Note: We don't check for malfunctioning ports here.. we need a better way to check
+				// for them.. For example the 4370 port can work to acquire the CSRF token
+				// but does not work on remote/status.json .. we can't make the call to that page
+				// here so we maybe need something like a vector of the non working ports that
+				// RefreshMetaData adds to and calls DeInit()? .. the problem is do we know for sure
+				// that a null content type for remote/status.json means that the port is not working?
+				// Maybe we just get away with starting to scan ports at 4371. Implement and test something
+				// later if there are ever problems with the ports
+
+				working = true;
 			}
 			catch (const std::exception&) {
 				// We just swallow these
@@ -312,7 +325,7 @@ unsigned int SpotifyWebHook::GetWorkingPort() const {
 		throw std::exception("Couldn't determine working port for local spotify server, SpotifyWebHelper.exe running?");
 	}
 
-	return validPorts.front();
+	return validPorts.back();
 }
 
 std::string SpotifyWebHook::GenerateSpotilocalHostname() {
@@ -341,10 +354,6 @@ std::string SpotifyWebHook::SetupOAuth() {
 	uri.setAuthority("open.spotify.com");
 	uri.setPath("/token");
 	std::string path{uri.getPathAndQuery()};
-
-	//if (path.empty()) {
-	//	path = "/";
-	//}
 
 	HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
 	HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
@@ -468,6 +477,10 @@ std::tuple<bool, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData()
 
 	// We have to return a copy because else it is not thread safe
 	return std::make_tuple(true, std::make_unique<SpotifyMetaData>(m_bufferedMetaData));
+}
+
+bool SpotifyWebHook::DoesSpotfiyNeedARestart() const noexcept {
+	return m_spotifyNeedsRestart;
 }
 
 // Maybe for later use:

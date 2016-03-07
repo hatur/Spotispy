@@ -26,9 +26,6 @@ public:
 	// Processes spotify track data and handles sound mute / volume lowering
 	void Analyze();
 
-	// Trys to fetch spoify data or initialize the hook if the hook is not established yet
-	void HandleHook() noexcept;
-
 	// Not used atm, determines if this context (spotify) has the focus, maybe change later
 	void SetFocus(bool focus) noexcept;
 	void SetAdsBehavior(EAdsBehavior newBehavior) noexcept;
