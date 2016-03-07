@@ -2,6 +2,9 @@
 
 Spotispy is a Windows program written in C++ that can lower the volume or mute the sound when an Ad is playing (using the Windows soundmixer). Additionally it has the funcitonality to output a .txt file that can be used with OBS or similar streaming programs to show the curerntly playing Song on stream or with OBS recorded videos. The program is currently only tested on Windows 10, but it should work on Windows 7 onwards.
 
+##### Download:
+
+
 ##### Recompiling:
 Since the program is windows only I have not added cmake support (yet), so you will need Visual Studio 2015 or a way to downgrade the project files. The source should work with Visual Studio versions supporting C++11.
 
