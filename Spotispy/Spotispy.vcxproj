@@ -92,13 +92,13 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Cpp_VS\openssl_precompiled102f\include;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Oleacc.lib;cpprest140d_2_8.wod.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Cpp_VS\Spotispy\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Oleacc.lib;PocoFoundationd.lib;PocoNetd.lib;PocoJSONd.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Cpp_VS\Spotispy\Lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -144,15 +144,15 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir);</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Cpp_VS\openssl_precompiled102f\include;$(ProjectDir)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Oleacc.lib;cpprest140_2_8.wod.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Cpp_VS\Spotispy\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Oleacc.lib;PocoFoundation.lib;PocoNet.lib;PocoJSON.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Cpp_VS\Spotispy\Lib\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -193,10 +193,6 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="ChromeAnalyzer.h" />
     <ClInclude Include="CommonCOM.h" />
     <ClInclude Include="cpprest\astreambuf.h" />
     <ClInclude Include="cpprest\asyncrt_utils.h" />
@@ -245,7 +241,6 @@
     <ClInclude Include="TwitchIO.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ChromeAnalyzer.cpp" />
     <ClCompile Include="CommonCOM.cpp" />
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="SpotifyAnalyzer.cpp" />

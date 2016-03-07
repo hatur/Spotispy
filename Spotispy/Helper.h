@@ -65,6 +65,20 @@ inline std::vector<CString> Helper::SeperateString(const CString& string, const 
 	return subStrs;
 }
 
+std::wstring ConvertStrToWStr(const std::string& str);
+std::string ConvertWStrToStr(const std::wstring& wstr);
+
+template<typename Function, typename... Args>
+inline std::future<typename std::result_of<Function(Args...)>::type> trueAsync(Function&& f, Args&&... args) {
+	typedef typename std::result_of<Function(Args...)>::type R;
+	auto bound_task = std::bind(std::forward<Function>(f), std::forward<Args>(args)...);
+	std::packaged_task<R()> task(std::move(bound_task));
+	auto ret = task.get_future();
+	std::thread t(std::move(task));
+	t.detach();
+	return ret;
+}
+
 struct YoutubeSong {
 	CString m_name;
 	HWND m_hwndStarted;

@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="Spotispy.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
@@ -40,9 +37,6 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="TwitchIO.h">
-      <Filter>Headerdateien</Filter>
-    </ClInclude>
-    <ClInclude Include="ChromeAnalyzer.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="CommonCOM.h">
@@ -177,9 +171,6 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="TwitchIO.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
-    <ClCompile Include="ChromeAnalyzer.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="CommonCOM.cpp">

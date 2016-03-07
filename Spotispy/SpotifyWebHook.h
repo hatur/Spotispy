@@ -1,8 +1,6 @@
 #pragma once
 
-#include "cpprest/http_client.h"
-#include "cpprest/filestream.h"
-
+#include "Poco/Net/Context.h"
 
 struct SpotifyMetaData {
 	unsigned int m_spotifyVersion;
@@ -27,10 +25,10 @@ struct SpotifyMetaData {
 	std::chrono::steady_clock::time_point m_initTime;
 };
 
-enum class EMetaDataStatus {
-	Success,
-	NoData,
-	ErrorRetrieving,
+enum class EStatusEntryType {
+	// We only need those two
+	Debug,
+	Error
 };
 
 /**
@@ -38,43 +36,69 @@ enum class EMetaDataStatus {
 **/
 class SpotifyWebHook {
 public:
-	// Initializing the Hook may block, so use a thread to manage it, it's internally protected by a mutex
-	SpotifyWebHook();
+	// @param refreshRate - The time between each call to Init() or RefreshMetaData(), the actual time between the refreshes is the time the request takes + refreshRate
+	SpotifyWebHook(std::chrono::milliseconds refreshRate);
+	~SpotifyWebHook();
 
-	// Note: You don't need to call this, it is automatically called through the constructor, only call this if you want to re-initialize the web context
-	void Init();
+	SpotifyWebHook(const SpotifyWebHook&) = delete;
+	SpotifyWebHook& operator= (const SpotifyWebHook&) = delete;
+	SpotifyWebHook(SpotifyWebHook&&) = delete;
+	SpotifyWebHook& operator= (SpotifyWebHook&&) = delete;
 
-	void Uninitialize();
+	// @param refreshRate - The new refreshRate in seconds, please note that the new refreshRate will first kick in after the next refresh (ongoing wait) is finished
+	void SetRefreshRate(std::chrono::milliseconds refreshRate) noexcept;
 
-	// Trys to refresh the buffered meta data with actual values, starts a task, does not block
-	void RefreshMetaData() noexcept;
-
+	// Returns whether the hook is initialized and ready to operate
 	bool IsInitialized() const noexcept;
-	bool IsInitializationOngoing() const noexcept;
-	std::wstring GetStatusMessage() const noexcept;
+
+	// This returns the current statusmessages and deletes them from the internal vetor
+	std::queue<std::wstring> FetchStatusMessages() noexcept;
 
 	// Returns the gathered Data
-	std::tuple<EMetaDataStatus, std::unique_ptr<SpotifyMetaData>> GetMetaData() const noexcept;
+	std::tuple<bool, std::unique_ptr<SpotifyMetaData>> GetMetaData() const noexcept;
 
 private:
-	unsigned int GetWorkingPort(const std::wstring& rndHostName) const;
-	std::wstring GenerateLocalHostURL(const std::wstring& rndHostName, unsigned int port);
+	unsigned int GetWorkingPort() const;
+	std::string GenerateSpotilocalHostname();
+	std::string GenerateLocalHostURL(const std::string& rndHostName, unsigned int port);
 
-	bool SetupOAuth(web::json::value&& jsonData);
-	bool SetupCSRF();
+	std::string SetupOAuth();
+	std::string SetupCSRF();
+
+	// Init() and RefreshMetaData() are automatically called through the worker thread, never call them manually
+
+	void Init();
+	void DeInit() noexcept;
+	void RefreshMetaData() noexcept;
+
+	// This function first checks if there already are too many entries and if not pushes it to m_statusMessages
+	void PushStatusEntry(EStatusEntryType statusEntryType, std::wstring statusEntry);
 
 	//bool IsWebHelperRunning() const noexcept;
 	//bool InitWebHelper() const noexcept;
 
-	bool m_hookInitRunning						{false};
+	std::chrono::milliseconds m_refreshRate;
+	std::atomic<bool> m_refreshRequest			{true};
+
+	const Poco::Net::Context::Ptr m_sslContext;
+
+	std::unique_ptr<std::thread> m_thread		{nullptr};
+	std::atomic<bool> m_exitRequested			{false};
+	//bool m_hookInitRunning						{false};
 	bool m_hookInitialized						{false};
-	std::wstring m_statusMessage				{};
-	std::wstring m_localHost					{};
-	std::wstring m_oauth						{};
-	std::wstring m_csrf							{};
-	bool m_metaDataTaskFinished					{true};
+	std::string m_localHost						{};
+	unsigned int m_localPort					{(std::numeric_limits<unsigned int>::max)()};
+	std::string m_oauth							{};
+	std::string m_csrf							{};
+	//bool m_metaDataTaskRunning					{false};
+	std::atomic<bool> m_spotifyNeedsRestart{false};
 	bool m_metaDataInitialized					{false};
-	EMetaDataStatus m_metaDataStatus			{EMetaDataStatus::NoData};
 	SpotifyMetaData m_bufferedMetaData			{};
+
+	unsigned int m_maxQueuedStatusMessages		{20};
+	std::queue<std::wstring> m_statusMessages;
 	mutable std::mutex m_mutex;
+
+	std::condition_variable m_condVar;
+	mutable std::mutex m_condMutex;
 };

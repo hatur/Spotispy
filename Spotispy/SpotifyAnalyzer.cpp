@@ -20,7 +20,7 @@ SpotifyAnalyzer::SpotifyAnalyzer(CWnd* mainWindow, std::shared_ptr<CommonCOM> co
 		m_adsBehavior = EAdsBehavior::LowerVolume;
 	}
 
-	m_webHook = std::make_unique<SpotifyWebHook>();
+	m_webHook = std::make_unique<SpotifyWebHook>(std::chrono::milliseconds(500));
 }
 
 SpotifyAnalyzer::~SpotifyAnalyzer() {
@@ -61,13 +61,15 @@ void SpotifyAnalyzer::Analyze() {
 		m_savedVolume = audioVolume;
 	}
 
-	EMetaDataStatus metaDataStatus = EMetaDataStatus::NoData;
+	bool metaDataRetrievalSuccess = false;
 
 	if (m_webHook->IsInitialized()) {
-		std::tie(metaDataStatus, m_metaData) = m_webHook->GetMetaData();
+		std::tie(metaDataRetrievalSuccess, m_metaData) = m_webHook->GetMetaData();
 	}
 
-	if (metaDataStatus == EMetaDataStatus::Success) {
+	auto statusMessages = m_webHook->FetchStatusMessages();
+
+	if (metaDataRetrievalSuccess) {
 		// Only updates the EDIT to let us see the song in the application
 		std::wstring fullTitle{m_metaData->m_artistName + L" - " + m_metaData->m_trackName + L" (" + m_metaData->m_albumName + L")"};
 		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{fullTitle.c_str()});
@@ -83,9 +85,6 @@ void SpotifyAnalyzer::Analyze() {
 
 		m_muted = adPlaying;
 	}
-	else if (metaDataStatus == EMetaDataStatus::ErrorRetrieving) {
-		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, std::wstring{L"Error: " + m_webHook->GetStatusMessage()}.c_str());
-	}
 }
 
 void SpotifyAnalyzer::RestoreDefaults() noexcept {
@@ -96,14 +95,14 @@ void SpotifyAnalyzer::RestoreDefaults() noexcept {
 }
 
 void SpotifyAnalyzer::HandleHook() noexcept {
-	bool processRunning = IsSpotifyRunning();
+	//bool processRunning = IsSpotifyRunning();
 
-	if (m_webHook->IsInitialized() && processRunning) {
-		m_webHook->RefreshMetaData();
-	}
-	else if (!m_webHook->IsInitialized() && processRunning) {
-		m_webHook->Init();
-	}
+	//if (m_webHook->IsInitialized() && processRunning) {
+	//	m_webHook->RefreshMetaData();
+	//}
+	//else if (!m_webHook->IsInitialized() && processRunning) {
+	//	m_webHook->Init();
+	//}
 }
 
 void SpotifyAnalyzer::SetFocus(bool focus) noexcept {

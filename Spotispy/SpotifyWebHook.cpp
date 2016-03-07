@@ -1,397 +1,449 @@
 #include "stdafx.h"
 #include "SpotifyWebHook.h"
 
-#include <array>
-
 #include "SpotispyDlg.h"
 #include "Helper.h"
 
-SpotifyWebHook::SpotifyWebHook() {
-	Init();
+#include "Poco/URI.h"
+#include "Poco/Path.h"
+#include "Poco/Exception.h"
+#include "Poco/Net/HTTPClientSession.h"
+#include "Poco/Net/HTTPSClientSession.h"
+#include "Poco/Net/HTTPRequest.h"
+#include "Poco/Net/HTTPResponse.h"
+
+#include "Poco/JSON/Parser.h"
+#include "Poco/JSON/JSONException.h"
+#include "Poco/Dynamic/Var.h"
+#include "Poco/UnicodeConverter.h"
+
+SpotifyWebHook::SpotifyWebHook(std::chrono::milliseconds refreshRate)
+	: m_refreshRate{std::move(refreshRate)}
+	, m_sslContext{new Poco::Net::Context(Poco::Net::Context::CLIENT_USE, "", "", "", Poco::Net::Context::VERIFY_NONE, 9, false, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH")} {
+	
+	m_thread = std::make_unique<std::thread>(std::thread{[this] {
+		std::unique_lock<std::mutex> condLock(m_condMutex);
+
+		while (true) {
+			// Signal from main thread to exit this worker
+			m_condVar.wait(condLock, [this] {
+				//
+				if (m_exitRequested) {
+					return true;
+				}
+
+				if (m_refreshRequest) {
+					m_refreshRequest = false;
+					return true;
+				}
+
+				return false;
+			});
+
+			if (m_exitRequested) {
+				break;
+			}
+
+			bool needsInit = false;
+			bool spotifyRunning = Helper::IsProcessRunning(L"spotify.exe", true);
+
+			{
+				std::lock_guard<std::mutex> lock{m_mutex};
+				needsInit = !m_hookInitialized && spotifyRunning;
+			}
+
+			if (needsInit) {
+				Init();
+			}
+			else if (spotifyRunning) {
+				RefreshMetaData();
+			}
+			else if (!spotifyRunning && m_hookInitialized) {
+				DeInit();
+			}
+
+			std::chrono::milliseconds refreshRate;
+
+			{
+				std::lock_guard<std::mutex> lock{m_mutex};
+				refreshRate = m_refreshRate;
+			}
+
+			// We just fire a std::async to notify this thread after n seconds,
+			//std::thread{}.detach();
+
+			trueAsync([this, refreshRate] {
+				std::this_thread::sleep_for(refreshRate);
+				m_refreshRequest = true;
+				m_condVar.notify_all();
+			});
+		}
+	}});
+}
+
+SpotifyWebHook::~SpotifyWebHook() {
+	m_exitRequested = true;
+	m_condVar.notify_all();
+	m_thread->join();
 }
 
 void SpotifyWebHook::Init() {
-	using namespace web::http;
-	using namespace web::http::client;
+	using namespace Poco;
+	using namespace Poco::Net;
 
-	{
-		std::lock_guard<std::mutex> lock{m_mutex};
-		if (m_hookInitRunning) {
-			return;
-		}
-		else {
-			m_hookInitRunning = true;
-		}
-	}
+	//{
+	//	std::lock_guard<std::mutex> lock{m_mutex};
+	//	m_hookInitRunning = true;
+	//}
 
-	const std::wstring letters{L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"};
+	try {
+		m_localHost = GenerateSpotilocalHostname();
+		m_localPort = GetWorkingPort();
 
-	auto randomWChar = [&letters] {
-		std::random_device randD;
-
-		return letters[randD() % letters.size()];
-	};
-
-	// Need to use braced ctor here
-	std::wstring rndHostName(10, 0);
-
-	std::generate_n(rndHostName.begin(), 10, randomWChar);
-
-	http_client client(L"https://open.spotify.com/token");
-
-	// Make the request and asynchronously process the response.
-	client.request(methods::GET).then([this, rndHostName] (http_response response) {
-		if (response.status_code() == status_codes::OK) {
-			bool isJson = false;
-
-			auto headers = response.headers();
-			auto it = headers.find(L"Content-Type");
-			if (it != headers.end()) {
-				auto data = it->second.data();
-
-				if (std::wstring{data}.find(L"application/json") != std::wstring::npos) {
-					isJson = true;
-				}
-			}
-
-			if (!isJson) {
-				return;
-			}
-
-			auto jsonData = response.extract_json().get();
-
-			auto port = GetWorkingPort(rndHostName);
-
-			{
-				std::lock_guard<std::mutex> lock{m_mutex};
-				m_localHost = GenerateLocalHostURL(rndHostName, port);
-			}
-
-			if (!SetupOAuth(std::move(jsonData))) {
-				throw std::exception{"Couldn't read OAuth token"};
-			}
-			if (!SetupCSRF()) {
-				throw std::exception{"Couldn't read CSRF token"};
-			}
-
-			{
-				std::lock_guard<std::mutex> lock{m_mutex};
-				m_hookInitialized = true;
-			}
-		}
-		else {
-			std::lock_guard<std::mutex> lock{m_mutex};
-			m_statusMessage = L"Couldn't establish connection to https://spotify.com";
-			m_hookInitialized = false;
-		}
-	}).then([this] (pplx::task<void> task) {
-		try {
-			task.get();
-		}
-		catch (const std::exception& ex) {
-			std::wostringstream errMsg;
-			errMsg << ex.what() << std::endl;
-
-			std::lock_guard<std::mutex> lock{m_mutex};
-			m_statusMessage = std::move(errMsg.str());
-			m_hookInitialized = false;
-		}
+		m_oauth = SetupOAuth();
+		m_csrf = SetupCSRF();
 
 		{
 			std::lock_guard<std::mutex> lock{m_mutex};
-			m_hookInitRunning = false;
+			m_hookInitialized = true;
 		}
-	});
+
+		// Refresh data first time
+		RefreshMetaData();
+	}
+	catch (const std::exception& ex) {
+		std::wostringstream errMsg;
+		errMsg << ex.what();
+		PushStatusEntry(EStatusEntryType::Error, errMsg.str());
+	}
 }
 
-void SpotifyWebHook::Uninitialize() {
+void SpotifyWebHook::DeInit() noexcept {
 	std::lock_guard<std::mutex> lock{m_mutex};
 	m_hookInitialized = false;
-	m_metaDataInitialized = false;
 }
 
 void SpotifyWebHook::RefreshMetaData() noexcept {
-	if (!IsInitialized()) {
-		return;
-	}
+	using namespace Poco;
+	using namespace Poco::Net;
+	using namespace Poco::JSON;
 
-	using namespace web::http;
-	using namespace web::http::client;
+	try {
+		URI uri;
+		uri.setScheme("https");
+		uri.setAuthority(m_localHost);
+		uri.setPath("/remote/status.json");
+		uri.setPort(m_localPort);
+		uri.addQueryParameter("oauth", m_oauth);
+		uri.addQueryParameter("csrf", m_csrf);
+		std::string path{uri.getPathAndQuery()};
 
-	{
-		std::lock_guard<std::mutex> lock{m_mutex};
-		if (!m_metaDataTaskFinished) {
-			return;
+		HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+		HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
+		HTTPResponse response;
+
+		session.sendRequest(request);
+
+		if (response.getStatus() != HTTPResponse::HTTP_OK) {
+			throw std::exception(std::string{"Couldn't connect to local Spotify server: " + response.getReason() + ", when trying to get metadata"}.c_str());
 		}
-		m_metaDataTaskFinished = false;
 
-		http_client client(m_localHost + L"/remote/status.json?oauth=" + m_oauth + L"&csrf=" + m_csrf);
-		client.request(methods::GET).then([this] (http_response response) -> pplx::task<web::json::value> {
-			if (response.status_code() == status_codes::OK) {
-				bool isJson = false;
+		auto& is = session.receiveResponse(response);
 
-				auto headers = response.headers();
-				auto it = headers.find(L"Content-Type");
-				if (it != headers.end()) {
-					auto data = it->second.data();
+		auto contentType = response.getContentType();
 
-					if (std::wstring{data}.find(L"application/json") != std::wstring::npos) {
-						isJson = true;
-					}
-				}
+		if (contentType.find("application/json") == std::string::npos) {
+			throw std::exception("Not a valid JSON file when trying to get Spotify metadata");
+		}
 
-				if (!isJson) {
-					std::lock_guard<std::mutex> lock{m_mutex};
-					m_metaDataInitialized = false;
-					m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
-					return pplx::task_from_result(web::json::value());
-				}
+		std::string content{std::istreambuf_iterator<char>{is},{}};
 
-				return response.extract_json();
+		Parser parser;
+		auto result = parser.parse(content);
+
+		Object::Ptr object = result.extract<Object::Ptr>();
+
+		// This might be Spotify to blame.. we need to inform the user he has to restart Spotify..
+		auto error = object->has("error");
+
+		if (error) {
+			auto message = object->get("error").extract<Object::Ptr>()->get("message").extract<std::string>();
+			m_spotifyNeedsRestart = true;
+			DeInit(); // This can be because of an invalid CSRF or OAuth token, so we want a new initialization
+			throw std::exception(std::string("Error accessing Spotify metadata: " + message + ", trying to re-establish connection").c_str());
+		}
+		else {
+			m_spotifyNeedsRestart = false;
+		}
+
+		SpotifyMetaData metaData;
+
+		if (object->has("version")) {
+			metaData.m_spotifyVersion = object->get("version").extract<int>();
+		}
+
+		if (object->has("client_version")) {
+			metaData.m_clientVersion = ConvertStrToWStr(object->get("client_version").extract<std::string>());
+		}
+
+		if (object->has("playing")) {
+			metaData.m_playing = object->get("playing").extract<bool>();
+		}
+
+		if (object->has("shuffle")) {
+			metaData.m_shuffle = object->get("shuffle").extract<bool>();
+		}
+
+		if (object->has("repeat")) {
+			metaData.m_repeat = object->get("repeat").extract<bool>();
+		}
+
+		if (object->has("play_enabled")) {
+			metaData.m_playEnabled = object->get("play_enabled").extract<bool>();
+		}
+
+		if (object->has("prev_enabled")) {
+			metaData.m_prevEnabled = object->get("prev_enabled").extract<bool>();
+		}
+
+		if (object->has("next_enabled")) {
+			metaData.m_nextEnabled = object->get("next_enabled").extract<bool>();
+			metaData.m_isAd = !metaData.m_nextEnabled;
+		}
+
+		if (object->has("track")) {
+			auto trackData = object->get("track").extract<Object::Ptr>();
+			if (trackData->has("artist_resource")) {
+				auto str = trackData->get("artist_resource").extract<Object::Ptr>()->get("name").extract<std::string>();
+				UnicodeConverter::toUTF32(str, metaData.m_artistName);
 			}
-			else {
-				return pplx::task_from_result(web::json::value());
+			if (trackData->has("track_resource")) {
+				auto str = trackData->get("track_resource").extract<Object::Ptr>()->get("name").extract<std::string>();
+				UnicodeConverter::toUTF32(str, metaData.m_trackName);
 			}
-		}).then([this] (pplx::task<web::json::value> previousTask) {
-			try {
-				const auto& jsonDataTask = previousTask.get();
-				auto jsonData = jsonDataTask.as_object();
-
-				if (jsonData.size() == 0) {
-					std::lock_guard<std::mutex> lock{m_mutex};
-					m_metaDataInitialized = false;
-					m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
-					m_metaDataTaskFinished = true;
-				}
-
-				if (jsonData.find(L"error") != jsonData.end()) {
-					// The page we got through the WebHelper is describing an error, we uninitialize the connection and
-					// set the status message to error to be able to view it in the App, yet we don't exactly determine
-					// the error, the source and possible solutions for it, should we do so? (TODO)
-					Uninitialize();
-
-					{
-						std::lock_guard<std::mutex> lock{m_mutex};
-						auto type = m_statusMessage = jsonData.at(L"error").as_object().at(L"type").as_string();
-						if (type == L"4102") {
-							// 4102 is invalid OAuth token, which makes no sense to me since it's always the same
-							// This should be ill-described and we just tell the user to restart Spotify because
-							// this is the only known way to solve it?
-							m_statusMessage = std::wstring{L"Error validating OAuth token, try to restart Spotify"};
-						}
-						else {
-							m_statusMessage = jsonData.at(L"error").as_object().at(L"message").as_string();
-						}
-						m_metaDataInitialized = false;
-						m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
-						m_metaDataTaskFinished = true;
-					}
-
-					return;
-				}
-
-				// We always need to return this, even if fields are missing (which they are, when ads are playing)
-				// So we can either check the fields and return what we have or we check only the fields that are present
-				// while Ads are playing.. TODO: Optimization
-				SpotifyMetaData metaData{};
-
-				if (jsonData.find(L"version") != jsonData.end()) {
-					metaData.m_spotifyVersion = static_cast<unsigned int>(jsonData.at(L"version").as_integer());
-				}
-
-				if (jsonData.find(L"client_version") != jsonData.end()) {
-					metaData.m_clientVersion = jsonData.at(L"client_version").as_string();
-				}
-
-				if (jsonData.find(L"playing") != jsonData.end()) {
-					metaData.m_playing = jsonData.at(L"playing").as_bool();
-				}
-
-				if (jsonData.find(L"shuffle") != jsonData.end()) {
-					metaData.m_shuffle = jsonData.at(L"shuffle").as_bool();
-				}
-
-				if (jsonData.find(L"repeat") != jsonData.end()) {
-					metaData.m_repeat = jsonData.at(L"repeat").as_bool();
-				}
-
-				if (jsonData.find(L"play_enabled") != jsonData.end()) {
-					metaData.m_playEnabled = jsonData.at(L"play_enabled").as_bool();
-				}
-
-				if (jsonData.find(L"prev_enabled") != jsonData.end()) {
-					metaData.m_prevEnabled = jsonData.at(L"prev_enabled").as_bool();
-				}
-
-				if (jsonData.find(L"next_enabled") != jsonData.end()) {
-					metaData.m_nextEnabled = jsonData.at(L"next_enabled").as_bool();
-					metaData.m_isAd = !metaData.m_nextEnabled;
-				}
-
-				if (jsonData.find(L"track") != jsonData.end()) {
-					auto trackData = jsonData.at(L"track").as_object();
-					if (trackData.find(L"artist_resource") != trackData.end()) {
-						metaData.m_artistName = trackData.at(L"artist_resource").as_object().at(L"name").as_string();
-					}
-					if (trackData.find(L"track_resource") != trackData.end()) {
-						metaData.m_trackName = trackData.at(L"track_resource").as_object().at(L"name").as_string();
-					}
-					if (trackData.find(L"album_resource") != trackData.end()) {
-						metaData.m_albumName = trackData.at(L"album_resource").as_object().at(L"name").as_string();
-					}
-
-					if (trackData.find(L"length") != trackData.end()) {
-						int length = trackData.at(L"length").as_integer();
-						if (length < 0) {
-							length = 0;
-						}
-
-						metaData.m_trackLength = std::chrono::seconds(length);
-					}
-				}
-
-				if (jsonData.find(L"playing_position") != jsonData.end()) {
-					float playPos = static_cast<float>(jsonData.at(L"playing_position").as_double());
-					if (playPos < 0.f) {
-						playPos = 0.f;
-					}
-
-					metaData.m_trackPos = std::chrono::milliseconds(static_cast<int>(playPos * 1000.f));
-					metaData.m_initTime = std::chrono::steady_clock::now();
-				}
-
-				{
-					std::lock_guard<std::mutex> lock{m_mutex};
-					m_metaDataInitialized = true;
-					m_metaDataStatus = EMetaDataStatus::Success;
-					m_bufferedMetaData = std::move(metaData);
-				}
+			if (trackData->has("album_resource")) {
+				auto str= trackData->get("album_resource").extract<Object::Ptr>()->get("name").extract<std::string>();
+				UnicodeConverter::toUTF32(str, metaData.m_albumName);
 			}
-			catch (const std::exception& ex) {
-				std::wostringstream errMsg;
-				errMsg << ex.what() << std::endl;
+			if (trackData->has("length")) {
+				int length = trackData->get("length").extract<int>();
+				if (length < 0) {
+					length = 0;
+				}
+				metaData.m_trackLength = std::chrono::seconds(length);
+			}
+		}
 
-				std::lock_guard<std::mutex> lock{m_mutex};
-				m_metaDataInitialized = false;
-				m_metaDataStatus = EMetaDataStatus::ErrorRetrieving;
+		if (object->has("playing_position")) {
+			float playPos = static_cast<float>(object->get("playing_position").extract<double>());
+			if (playPos < 0.f) {
+				playPos = 0.f;
 			}
 
-			std::lock_guard<std::mutex> lock{m_mutex};
-			m_metaDataTaskFinished = true;
-		});
+			metaData.m_trackPos = std::chrono::milliseconds(static_cast<int>(playPos * 1000.f));
+			metaData.m_initTime = std::chrono::steady_clock::now();
+		}
+
+		std::lock_guard<std::mutex> lock{m_mutex};
+		m_bufferedMetaData = std::move(metaData);
+		m_metaDataInitialized = true;
+	}
+	catch (const std::exception& ex) {
+		std::wostringstream errMsg;
+		errMsg << ex.what();
+		PushStatusEntry(EStatusEntryType::Error, errMsg.str());
+
+		std::lock_guard<std::mutex> lock{m_mutex};
+		m_metaDataInitialized = false;
 	}
 }
 
-unsigned int SpotifyWebHook::GetWorkingPort(const std::wstring& rndHostName) const {
-	using namespace web::http;
-	using namespace web::http::client;
+unsigned int SpotifyWebHook::GetWorkingPort() const {
+	using namespace Poco;
+	using namespace Poco::Net;
 
-	unsigned int port = 4370;
+	unsigned int port = 4371;
 	const unsigned int maxPort = 4379;
 
-	std::vector<std::tuple<unsigned int, Concurrency::task<http_response>>> queries;
-
-	for (; port != maxPort; ++port) {
-		http_client client{L"https://" + rndHostName + L".spotilocal.com:" + std::to_wstring(port) + L"/simplecsrf/token.json"};
-		queries.push_back(std::make_tuple(port, client.request(methods::GET)));
-	}
-
-	auto tasksRunning = [&queries] () {
-		bool running = false;
-
-		for (const auto& query : queries) {
-			const auto& task = std::get<1>(query);
-
-			if (!task.is_done()) {
-				running = true;
-				break;
-			}
-		}
-
-		return running;
-	};
-
-	while (tasksRunning()) {
-		std::this_thread::sleep_for(std::chrono::milliseconds{1});
-	}
-
+	std::mutex queryMutex;
+	std::vector<std::thread> threads;
 	std::vector<unsigned int> validPorts;
 
-	for (const auto& query : queries) {
-		try {
-			const auto& task = std::get<1>(query);
-			auto result = task.get();
+	for (; port < maxPort; ++port) {
+		threads.emplace_back([&queryMutex, &validPorts, port, this] {
+			bool working = false;
 
-			if (result.status_code() == status_codes::OK) {
-				auto port = std::get<0>(query);
-				validPorts.push_back(port);
+			try {
+				URI uri;
+				uri.setScheme("https");
+				uri.setAuthority(m_localHost);
+				uri.setPort(port);
+				uri.setPath("/simplecsrf/token.json");
+				std::string path{uri.getPathAndQuery()};
+
+				HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+				HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
+				HTTPResponse response;
+
+				session.sendRequest(request);
+
+				if (response.getStatus() == HTTPResponse::HTTP_OK) {
+					working = true;
+				}
 			}
-		}
-		catch (const std::exception&) {
-			// Not valid, connection err or something like that
-		}
+			catch (const std::exception&) {
+				// We just swallow these
+			}
+
+			{
+				if (working) {
+					std::lock_guard<std::mutex> lock{queryMutex};
+					validPorts.push_back(port);
+				}
+			}
+		});
+	}
+
+	for (auto& thread : threads) {
+		thread.join();
 	}
 
 	if (validPorts.size() == 0) {
-		throw std::exception("Couldn't determine port for SpotifyWebHelper, maybe Spotify is not started so it gets rejected..?");
+		throw std::exception("Couldn't determine working port for local spotify server, SpotifyWebHelper.exe running?");
 	}
 
 	return validPorts.front();
 }
 
-std::wstring SpotifyWebHook::GenerateLocalHostURL(const std::wstring& rndHostName, unsigned int port) {
-	return L"https://" + rndHostName + L".spotilocal.com:" + std::to_wstring(port);
+std::string SpotifyWebHook::GenerateSpotilocalHostname() {
+	const std::string letters{"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"};
+	std::random_device randD;
+	std::string hostname;
+
+	for (unsigned int i = 0; i < 10; ++i) {
+		hostname += letters[randD() % letters.size()];
+	}
+
+	return hostname + ".spotilocal.com";
 }
 
-bool SpotifyWebHook::SetupOAuth(web::json::value&& jsonData) {
-	for (const auto& value : jsonData.as_object()) {
-		auto oauth = value.second.serialize();
-
-		oauth.erase(std::remove_if(oauth.begin(), oauth.end(), [] (const auto& letter) {
-			return letter == '\"';
-		}), oauth.end());
-
-		{
-			std::lock_guard<std::mutex> lock{m_mutex};
-			m_oauth = std::move(oauth);
-		}
-
-		// Kinda ugly but it is only one line, TODO?
-		return true;
-	}
-
-	return false;
+std::string SpotifyWebHook::GenerateLocalHostURL(const std::string& rndHostName, unsigned int port) {
+	return "https://" + rndHostName + ".spotilocal.com:" + std::to_string(port);
 }
 
-bool SpotifyWebHook::SetupCSRF() {
-	using namespace web::http;
-	using namespace web::http::client;
+std::string SpotifyWebHook::SetupOAuth() {
+	using namespace Poco;
+	using namespace Poco::Net;
+	using namespace Poco::JSON;
 
-	http_client client{m_localHost + L"/simplecsrf/token.json"};
+	URI uri;
+	uri.setScheme("https");
+	uri.setAuthority("open.spotify.com");
+	uri.setPath("/token");
+	std::string path{uri.getPathAndQuery()};
 
-	http_request request{methods::GET};
-	request.headers().add(L"Origin", L"https://open.spotify.com");
+	//if (path.empty()) {
+	//	path = "/";
+	//}
 
-	auto response = client.request(request).get();
+	HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+	HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
+	HTTPResponse response;
 
-	if (response.status_code() != status_codes::OK) {
-		return false;
+	session.sendRequest(request);
+	
+	if (response.getStatus() != HTTPResponse::HTTP_OK) {
+		throw std::exception(std::string{"Couldn't connect to hostname, reason: " + response.getReason()}.c_str());
 	}
 
-	auto jsonData = response.extract_json().get();
+	auto& is = session.receiveResponse(response);
 
-	if (!jsonData.has_field(L"token")) {
-		return false;
+	auto contentType = response.getContentType();
+
+	if (contentType.find("application/json") == std::string::npos) {
+		throw std::exception("Couldn't get OAuth token, content type is no JSON");
 	}
 
-	auto val = jsonData.at(L"token").as_string();
+	std::string content{std::istreambuf_iterator<char>{is},{}};
 
-	{
-		std::lock_guard<std::mutex> lock{m_mutex};
-		m_csrf = std::move(val);
+	Parser parser;
+	auto result = parser.parse(content);
+
+	Object::Ptr object = result.extract<Object::Ptr>();
+
+	auto tokenValue = object->get("t");
+
+	// "An attempt to convert or extract from a non-initialized (empty) Var variable shall result in an exception being thrown."
+	std::string oauthToken = tokenValue.extract<std::string>();
+
+	return oauthToken;
+}
+
+std::string SpotifyWebHook::SetupCSRF() {
+	using namespace Poco;
+	using namespace Poco::Net;
+	using namespace Poco::JSON;
+
+	URI uri;
+	uri.setScheme("https");
+	uri.setAuthority(m_localHost);
+	uri.setPort(m_localPort);
+	uri.setPath("/simplecsrf/token.json");
+	std::string path{uri.getPathAndQuery()};
+
+	HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+	HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
+	request.set("Origin", "https://open.spotify.com");
+	HTTPResponse response;
+
+	session.sendRequest(request);
+
+	if (response.getStatus() != HTTPResponse::HTTP_OK) {
+		throw std::exception("Couldn't fetch CSRF from local Spotify server");
 	}
 
-	return true;
+	auto& is = session.receiveResponse(response);
+
+	std::string content{std::istreambuf_iterator<char>{is},{}};
+
+	Parser parser;
+	auto result = parser.parse(content);
+
+	Object::Ptr object = result.extract<Object::Ptr>();
+
+	auto tokenValue = object->get("token");
+
+	std::string csrfToken = tokenValue.extract<std::string>();
+
+	return csrfToken;
+}
+
+void SpotifyWebHook::PushStatusEntry(EStatusEntryType statusEntryType, std::wstring statusEntry) {
+	std::wstring prefix;
+	switch (statusEntryType) {
+		case EStatusEntryType::Debug:
+			prefix = L"Debug: ";
+			break;
+		default:
+		case EStatusEntryType::Error:
+			prefix = L"Error: ";
+			break;
+	}
+
+	std::lock_guard<std::mutex> lock{m_mutex};
+	while (m_statusMessages.size() > m_maxQueuedStatusMessages - 1) {
+		m_statusMessages.pop();
+	}
+
+	// Is this legit?
+	auto message = std::move(prefix) + std::move(statusEntry);
+
+	m_statusMessages.push(message);
+}
+
+void SpotifyWebHook::SetRefreshRate(std::chrono::milliseconds refreshRate) noexcept {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	m_refreshRate = refreshRate;
 }
 
 bool SpotifyWebHook::IsInitialized() const noexcept {
@@ -399,41 +451,24 @@ bool SpotifyWebHook::IsInitialized() const noexcept {
 	return m_hookInitialized;
 }
 
-bool SpotifyWebHook::IsInitializationOngoing() const noexcept {
+std::queue<std::wstring> SpotifyWebHook::FetchStatusMessages() noexcept {
 	std::lock_guard<std::mutex> lock{m_mutex};
-	return m_hookInitRunning;
-}
-
-std::wstring SpotifyWebHook::GetStatusMessage() const noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-	return m_statusMessage;
-}
-
-std::tuple<EMetaDataStatus, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData() const noexcept {
-	std::lock_guard<std::mutex> lock{m_mutex};
-	if (m_metaDataStatus == EMetaDataStatus::ErrorRetrieving) {
-		return std::make_tuple(m_metaDataStatus, nullptr);
+	auto queue = m_statusMessages;
+	while (m_statusMessages.size() > 0) {
+		m_statusMessages.pop();
 	}
-	else if (!m_metaDataInitialized) {
-		return std::make_tuple(EMetaDataStatus::NoData, nullptr);
+	return queue;
+}
+
+std::tuple<bool, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData() const noexcept {
+	std::lock_guard<std::mutex> lock{m_mutex};
+	if (!m_metaDataInitialized) {
+		return std::make_tuple(false, nullptr);
 	}
 
 	// We have to return a copy because else it is not thread safe
-	return std::make_tuple(EMetaDataStatus::Success, std::make_unique<SpotifyMetaData>(m_bufferedMetaData));
+	return std::make_tuple(true, std::make_unique<SpotifyMetaData>(m_bufferedMetaData));
 }
 
-//bool SpotifyWebHook::IsWebHelperRunning() const noexcept {
-//	return Helper::IsProcessRunning(L"spotifywebhelper.exe", true);
-//}
-//
-//bool SpotifyWebHook::InitWebHelper() const noexcept {
-//	LPWSTR folderPath;
-//	HRESULT hr = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, 0, &folderPath);
-//
-//	if (hr != S_OK) {
-//		MessageBox(0, L"Error, couldn't determine %APPDATA% folder, this program needs Windows Vista or later!", L"Error", MB_ICONERROR);
-//		std::terminate();
-//	}
-//
-//	// TODO: Do we still need to manually start the web helper?
-//}
+// Maybe for later use:
+// HRESULT hr = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, 0, &folderPath);

@@ -91,3 +91,18 @@ bool Helper::IsProcessRunning(std::wstring processName, bool ignoreCase) noexcep
 
 	return processExists;
 }
+
+std::wstring ConvertStrToWStr(const std::string & str) {
+	std::wstring wstr{str.begin(), str.end()};
+
+	return wstr;
+}
+
+std::string ConvertWStrToStr(const std::wstring& wstr) {
+	std::locale const loc("");
+	const wchar_t* from = wstr.c_str();
+	const std::size_t len = wstr.size();
+	std::vector<char> buffer(len + 1);
+	std::use_facet<std::ctype<wchar_t>>(loc).narrow(from, from + len, '_', &buffer[0]);
+	return std::string(&buffer[0], &buffer[len]);
+}

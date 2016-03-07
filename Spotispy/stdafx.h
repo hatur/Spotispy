@@ -24,6 +24,7 @@
 #include <exception>
 #include <vector>
 #include <deque>
+#include <queue>
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -33,6 +34,8 @@
 #include <mutex>
 #include <atomic>
 #include <random>
+#include <sstream>
+#include <future>
 
 #ifndef _AFX_NO_OLE_SUPPORT
 #include <afxdtctl.h>           // MFC-Unterstützung für allgemeine Steuerelemente von Internet Explorer 4
