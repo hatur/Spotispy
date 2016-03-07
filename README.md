@@ -4,6 +4,7 @@ Spotispy is a Windows program written in C++ that can lower the volume or mute t
 
 ##### Download:
 
+[Head over to the releases page to get the latest release](https://github.com/hatur/Spotispy/releases)
 
 ##### Recompiling:
 Since the program is windows only I have not added cmake support (yet), so you will need Visual Studio 2015 or a way to downgrade the project files. The source should work with Visual Studio versions supporting C++11.
