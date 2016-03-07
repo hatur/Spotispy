@@ -106,8 +106,6 @@ The OpenSSL toolkit stays under a dual license, i.e. both the conditions of
  */
 
  Original SSLeay License
- -----------------------
-
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
