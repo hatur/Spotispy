@@ -31,9 +31,9 @@ PocoNetSSL.lib<br>
 Before you can build these last two libraries you need to download and compile (or use precompiled, because the process on windows is rather compilcated) the OpenSSL shared libraries (Tested with 1.0.2f) and link them with PocoCrypto and PocoNetSSL.
 
 ##### TODO:
+- ~~Implement way to save program properties to restore it the previous session~~
 - Implement way to chose the save destination of the stream info file
 - Assign fixed thread or threadpool to improve CPU Load
-- ~~Implement way to save program properties to restore it the previous session~~
 
 ## Spotispy Source License
 The MIT License (MIT)
