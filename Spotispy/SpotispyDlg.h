@@ -3,7 +3,7 @@
 #include "SpotifyAnalyzer.h"
 #include "JSONSaveFile.h"
 
-const std::wstring SPOTISPY_VERSION = L"v0.4";
+const std::wstring SPOTISPY_VERSION = L"v0.4.1";
 
 class CSpotispyDlg : public CDialogEx
 {

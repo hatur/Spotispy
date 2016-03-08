@@ -245,9 +245,18 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 		}
 
 		if (object->has("playing_position") && !metaData.m_isAd) {
-			float playPos = static_cast<float>(object->get("playing_position").extract<double>());
-			if (playPos < 0.f) {
-				playPos = 0.f;
+			float playPos = 0.f;
+
+			try {
+				// If the player is stopped playing_position is appearently not a double, so it throws bad cast exception, we just leave it at 0.f
+				playPos = static_cast<float>(object->get("playing_position").extract<double>());
+
+				if (playPos < 0.f) {
+					playPos = 0.f;
+				}
+			}
+			catch (const Poco::Exception&) {
+
 			}
 
 			metaData.m_trackPos = std::chrono::milliseconds(static_cast<int>(playPos * 1000.f));
