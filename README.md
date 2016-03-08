@@ -12,7 +12,7 @@ The application:<br>
 ![alt text](https://github.com/hatur/Spotispy/blob/master/Examples/app.png "Spotispy")
 
 Usage with OBS:<br>
-![alt text](https://github.com/hatur/Spotispy/blob/master/Examples/obsexample.png "OBS Example")
+![alt text](https://github.com/hatur/Spotispy/blob/master/Examples/obs.png "OBS Example")
 
 ##### Recompiling:
 Since the program is windows only I have not added cmake support (yet), so you will need Visual Studio 2015 or a way to downgrade the project files. The source should work with Visual Studio versions supporting C++11.
