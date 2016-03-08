@@ -34,6 +34,7 @@ Before you can build these last two libraries you need to download and compile (
 - ~~Implement way to save program properties to restore it the previous session~~
 - Implement way to chose the save destination of the stream info file
 - Assign fixed thread or threadpool to improve CPU Load
+- Implement way to notify of updates or even self update
 
 ## Spotispy Source License
 The MIT License (MIT)
