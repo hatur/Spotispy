@@ -1,75 +1,33 @@
 #pragma once
 
 /**
-* Collection of static Helper functions
+* Helper.h
+*
+* Collection of common helper funcitons
 **/
-class Helper
-{
-public:
-	template<typename T>
-	static std::vector<T> SeperateString(const T& string, const T& seperator);
 
-	template<>
-	static std::vector<CString> SeperateString(const CString& string, const CString& seperator);
+// Helper struct for file output
+struct SongInfo {
+	std::wstring m_track;
+	std::wstring m_artist;
+	std::wstring m_album;
 
-	// @ ignoreCase = Convert everything to lower and search then (ignoring case)
-	static bool MultiSearchCString(const CString& string, bool ignoreCase, std::vector<CString> searchValues);
-
-	static CString GetWindowTitle(HWND hwnd);
-	static CString GetWindowClassName(HWND hwnd);
-
-	// Potentially expensive if many processes are running..
-	static bool IsProcessRunning(std::wstring processName, bool ignoreCase) noexcept;
-
-private:
-	Helper() = delete;
+	std::chrono::seconds m_length{0};
+	std::chrono::milliseconds m_playPos{0};
 };
 
-template<typename T>
-inline std::vector<T> Helper::SeperateString(const T& string, const T& seperator) {
-	static_assert(false, "Not yet implemented!");
+std::vector<CString> SeperateString(const CString& string, const CString& seperator);
 
-	return std::vector<T>();
-}
+bool MultiSearchCString(const CString& string, bool ignoreCase, std::vector<CString> searchValues);
 
-template<>
-inline std::vector<CString> Helper::SeperateString(const CString& string, const CString& seperator) {
-	std::vector<CString> subStrs;
+CString GetWindowTitle(HWND hwnd);
 
-	int lastPos = 0;
-	bool hasNext = true;
+CString GetWindowClassName(HWND hwnd);
 
-	do {
-		int nextPos = string.Find(seperator, lastPos);
-
-		if (nextPos == -1) {
-			subStrs.emplace_back(string.Mid(lastPos));
-			break;
-		}
-
-		subStrs.emplace_back(string.Mid(lastPos, nextPos - lastPos));
-
-		lastPos = nextPos + seperator.GetLength();
-
-		hasNext = string.Find(seperator, lastPos) != -1;
-
-		if (!hasNext) {
-			// Add rest
-			auto rest = string.Mid(lastPos);
-			if (rest.GetLength() != 0) {
-				subStrs.push_back(std::move(rest));
-			}
-		}
-	} while (hasNext);
-
-	return subStrs;
-}
-
-std::wstring ConvertStrToWStr(const std::string& str);
-std::string ConvertWStrToStr(const std::wstring& wstr);
+bool IsProcessRunning(std::wstring processName, bool ignoreCase) noexcept;
 
 template<typename Function, typename... Args>
-inline std::future<typename std::result_of<Function(Args...)>::type> trueAsync(Function&& f, Args&&... args) {
+inline std::future<typename std::result_of<Function(Args...)>::type> TrueAsync(Function&& f, Args&&... args) {
 	typedef typename std::result_of<Function(Args...)>::type R;
 	auto bound_task = std::bind(std::forward<Function>(f), std::forward<Args>(args)...);
 	std::packaged_task<R()> task(std::move(bound_task));
@@ -79,20 +37,8 @@ inline std::future<typename std::result_of<Function(Args...)>::type> trueAsync(F
 	return ret;
 }
 
-struct YoutubeSong {
-	CString m_name;
-	HWND m_hwndStarted;
-	bool m_started;
-};
+void ReplaceAll(std::wstring& str, const std::wstring& from, const std::wstring& to);
 
-inline bool operator== (const YoutubeSong& lhs, const YoutubeSong& rhs) {
-	if (lhs.m_name != rhs.m_name) {
-		return false;
-	}
+std::wstring FormatPlayString(const std::wstring& formatString, const SongInfo& twitchInfo);
 
-	return true;
-}
-
-inline bool operator!= (const YoutubeSong& lhs, const YoutubeSong& rhs) {
-	return !(lhs == rhs);
-}
+void WritePlayString(const std::wstring& playString, const std::wstring& fileName);

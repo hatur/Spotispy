@@ -1,8 +1,9 @@
 #pragma once
 
 #include "SpotifyAnalyzer.h"
+#include "JSONSaveFile.h"
 
-const std::wstring SPOTISPY_VERSION = L"v0.3";
+const std::wstring SPOTISPY_VERSION = L"v0.4";
 
 class CSpotispyDlg : public CDialogEx
 {
@@ -41,10 +42,12 @@ private:
 
 	std::unique_ptr<SpotifyAnalyzer> m_spotifyAnalyzer;
 
+	JSONSaveFile m_dlgSave{"dlgPrefs.json"};
+
 	bool m_saveTwitchInfo;
 
-	std::wstring m_twitchFormat{L"Currently playing: %a - %t [%c / %f]"};
-	std::wstring m_adText{L"..waiting.."};
+	std::wstring m_twitchFormat;
+	std::wstring m_adText;
 
 	std::wstring m_bufferedPlayString;
 };

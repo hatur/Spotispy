@@ -69,33 +69,32 @@ private:
 
 	// Init() and RefreshMetaData() are automatically called through the worker thread, never call them manually
 
-	void Init();
+	void Init() noexcept;
 	void DeInit() noexcept;
 	void RefreshMetaData() noexcept;
 
 	// This function first checks if there already are too many entries and if not pushes it to m_statusMessages
 	void PushStatusEntry(EStatusEntryType statusEntryType, std::wstring statusEntry);
 
-	//bool IsWebHelperRunning() const noexcept;
-	//bool InitWebHelper() const noexcept;
-
-	std::chrono::milliseconds m_refreshRate;
-	std::atomic<bool> m_refreshRequest			{true};
-
 	const Poco::Net::Context::Ptr m_sslContext;
+	std::chrono::milliseconds m_refreshRate;
+	std::atomic<bool> m_refreshRequest {true};
 
-	std::unique_ptr<std::thread> m_thread		{nullptr};
-	std::atomic<bool> m_exitRequested			{false};
-	bool m_hookInitialized						{false};
-	std::string m_localHost						{};
-	unsigned int m_localPort					{(std::numeric_limits<unsigned int>::max)()};
-	std::string m_oauth							{};
-	std::string m_csrf							{};
-	std::atomic<bool> m_spotifyNeedsRestart		{false};
-	bool m_metaDataInitialized					{false};
-	SpotifyMetaData m_bufferedMetaData			{};
+	std::unique_ptr<std::thread> m_thread {nullptr};
+	std::atomic<bool> m_exitRequested {false};
 
-	unsigned int m_maxQueuedStatusMessages		{20};
+	bool m_hookInitialized {false};
+
+	std::string m_localHost {};
+	unsigned int m_localPort {(std::numeric_limits<unsigned int>::max)()};
+	std::string m_oauth {};
+	std::string m_csrf {};
+
+	std::atomic<bool> m_spotifyNeedsRestart {false};
+	bool m_metaDataInitialized {false};
+	SpotifyMetaData m_bufferedMetaData {};
+
+	unsigned int m_maxQueuedStatusMessages {20};
 	std::queue<std::wstring> m_statusMessages;
 	mutable std::mutex m_mutex;
 

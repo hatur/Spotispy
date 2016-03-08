@@ -36,9 +36,6 @@
     <ClInclude Include="SpotifyAnalyzer.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
-    <ClInclude Include="TwitchIO.h">
-      <Filter>Headerdateien</Filter>
-    </ClInclude>
     <ClInclude Include="CommonCOM.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
@@ -153,6 +150,9 @@
     <ClInclude Include="cpprest\ws_msg.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="JSONSaveFile.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Spotispy.cpp">
@@ -170,13 +170,13 @@
     <ClCompile Include="SpotifyAnalyzer.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="TwitchIO.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
     <ClCompile Include="CommonCOM.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="SpotifyWebHook.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="JSONSaveFile.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>

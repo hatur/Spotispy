@@ -43,6 +43,10 @@ void SpotifyAnalyzer::Analyze() {
 		}
 	}
 
+	if (!spotifyRunning) {
+		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify not started!");
+	}
+
 	// De-Init audio
 	if (!spotifyRunning && m_spotifyAudioInitialized) {
 		if (m_spotifyAudio != nullptr) {
@@ -50,8 +54,6 @@ void SpotifyAnalyzer::Analyze() {
 			m_spotifyAudio = nullptr;
 		}
 		m_spotifyAudioInitialized = false;
-
-		m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, L"Spotify not started!");
 	}
 
 	// Save the volume .. in case it was changed
@@ -84,16 +86,7 @@ void SpotifyAnalyzer::Analyze() {
 			m_mainWindow->SetDlgItemText(IDC_EDIT_SONG_SPOTIFY, CString{fullTitle.c_str()});
 		}
 
-		bool adPlaying = IsAdPlaying();
-
-		if (m_spotifyAudioInitialized && !m_muted && adPlaying) {
-			OnAdStatusChanged();
-		}
-		else if (m_spotifyAudioInitialized && m_muted && !adPlaying) {
-			OnAdStatusChanged();
-		}
-
-		m_muted = adPlaying;
+		OnAdStatusChanged();
 	}
 	else if (!metaDataRetrievalSuccess) {
 		if (statusMessages.size() > 0) {
@@ -205,21 +198,30 @@ void SpotifyAnalyzer::OnAdStatusChanged() noexcept {
 
 	if (IsAdPlaying()) {
 		if (m_adsBehavior == EAdsBehavior::Mute) {
-			m_spotifyAudio->SetMute(1, 0);
+			BOOL isMuted;
+			m_spotifyAudio->GetMute(&isMuted);
+			if (isMuted == 0) {
+				m_spotifyAudio->SetMute(1, 0);
+			}
 		}
 		else if (m_adsBehavior == EAdsBehavior::LowerVolume) {
+			// This currently get's continously called .. we need a approx check for float since we cant == them
 			auto* volumeSlider = static_cast<CSliderCtrl*>(m_mainWindow->GetDlgItem(IDC_SLIDER1));
 			float newVolume = static_cast<float>(volumeSlider->GetPos()) / 100.f;
 
-			m_spotifyAudio->GetMasterVolume(&m_savedVolume);
 			m_spotifyAudio->SetMasterVolume(newVolume, 0);
 		}
 	}
 	else {
 		if (m_adsBehavior == EAdsBehavior::Mute) {
-			m_spotifyAudio->SetMute(0, 0);
+			BOOL isMuted;
+			m_spotifyAudio->GetMute(&isMuted);
+			if (isMuted == 1) {
+				m_spotifyAudio->SetMute(0, 0);
+			}
 		}
 		else if (m_adsBehavior == EAdsBehavior::LowerVolume) {
+			// This currently get's continously called .. we need a approx check for float since we cant == them
 			m_spotifyAudio->SetMasterVolume(m_savedVolume, 0);
 		}
 	}
@@ -239,11 +241,11 @@ bool SpotifyAnalyzer::IsAdPlaying() const noexcept {
 }
 
 bool SpotifyAnalyzer::IsSpotifyRunning() noexcept {
-	return Helper::IsProcessRunning(L"spotify.exe", true);
+	return IsProcessRunning(L"spotify.exe", true);
 }
 
 bool SpotifyAnalyzer::IsWebHelperRunning() noexcept {
-	return Helper::IsProcessRunning(L"spotifywebhelper.exe", true);
+	return IsProcessRunning(L"spotifywebhelper.exe", true);
 }
 
 std::wstring SpotifyAnalyzer::GetCurrentlyPlayingTrack() const noexcept {

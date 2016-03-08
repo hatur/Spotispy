@@ -4,7 +4,8 @@
 #include "afxdialogex.h"
 #include "CommonCOM.h"
 #include "Helper.h"
-#include "TwitchIO.h"
+
+#include "Poco/UnicodeConverter.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -41,13 +42,27 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	SetIcon(m_hIcon, FALSE);
 
 	// TODO: Additional initialization
+	m_dlgSave.LoadFromFile();
+
 	SetWindowText(std::wstring{L"Spotispy - " + SPOTISPY_VERSION}.c_str());
 
-	CheckRadioButton(IDC_RADIO_MUTEADS, IDC_RADIO_LOWVOLADS, IDC_RADIO_MUTEADS);
+	bool muteAdsDefault = true;
+	auto muteAds = m_dlgSave.GetOrSaveDefault("muteAds", muteAdsDefault);
 
+	if (muteAds) {
+		CheckRadioButton(IDC_RADIO_MUTEADS, IDC_RADIO_LOWVOLADS, IDC_RADIO_MUTEADS);
+	}
+	else {
+		CheckRadioButton(IDC_RADIO_MUTEADS, IDC_RADIO_LOWVOLADS, IDC_RADIO_LOWVOLADS);
+	}
+	
 	auto* volumeSlider = static_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
 	volumeSlider->SetRange(0, 100, true);
-	volumeSlider->SetPos(10);
+
+	int adVolumeDefault = 10;
+	auto adVolume = m_dlgSave.GetOrSaveDefault("adVolume", adVolumeDefault);
+
+	volumeSlider->SetPos(adVolume);
 
 	CString volPercentageText;
 	volPercentageText.Format(L"%d", volumeSlider->GetPos());
@@ -60,13 +75,32 @@ BOOL CSpotispyDlg::OnInitDialog() {
 		volumeSlider->EnableWindow(false);
 	}
 
+	bool saveStreamInfoDefault = false;
+	auto saveStreamInfo = m_dlgSave.GetOrSaveDefault("saveStreamInfo", saveStreamInfoDefault);
+
 	auto* saveTwitchInfoCheckBtn = static_cast<CButton*>(GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
-	saveTwitchInfoCheckBtn->SetCheck(0);
+
+	if (saveStreamInfo) {
+		saveTwitchInfoCheckBtn->SetCheck(1);
+	}
+	else {
+		saveTwitchInfoCheckBtn->SetCheck(0);
+	}
 
 	m_saveTwitchInfo = saveTwitchInfoCheckBtn->GetCheck() == 1;
 
+	std::string formatStreamTextDefault = "Currently playing: %a - %t [%c / %f]";
+	auto formatStreamText = m_dlgSave.GetOrSaveDefault("formatStreamText", formatStreamTextDefault);
+
+	Poco::UnicodeConverter::toUTF16(formatStreamText, m_twitchFormat);
+
 	auto* twitchSavePatternEdit = static_cast<CEdit*>(GetDlgItem(IDC_EDIT_TWITCH_FORMAT));
 	twitchSavePatternEdit->SetWindowText(CString{m_twitchFormat.c_str()});
+
+	std::string adStreamTextDefault = "..waiting..";
+	auto adStreamText = m_dlgSave.GetOrSaveDefault("adStreamText", adStreamTextDefault);
+
+	Poco::UnicodeConverter::toUTF16(adStreamText, m_adText);
 
 	auto* adTextEdit = static_cast<CEdit*>(GetDlgItem(IDC_EDIT_AD_TEXT));
 	adTextEdit->SetWindowText(CString{m_adText.c_str()});
@@ -83,6 +117,8 @@ BOOL CSpotispyDlg::OnInitDialog() {
 
 	SetTimer(1, 50, nullptr);
 	SetTimer(2, 100, nullptr);	// Play Info
+
+	m_dlgSave.SaveToFile();
 
 	return TRUE;
 }
@@ -127,7 +163,7 @@ void CSpotispyDlg::OnTimer(UINT nIDEvent) {
 		if (m_saveTwitchInfo) {
 			auto metaData = m_spotifyAnalyzer->GetMetaData();
 			if (metaData != nullptr && m_spotifyAnalyzer->HasFocus() && m_spotifyAnalyzer->IsSpotifyRunning() && !m_spotifyAnalyzer->IsAdPlaying()) {
-				TwitchInfo twitchInfo;
+				SongInfo twitchInfo;
 				twitchInfo.m_artist = metaData->m_artistName;
 				twitchInfo.m_track = metaData->m_trackName;
 				twitchInfo.m_album = metaData->m_albumName;
@@ -169,6 +205,9 @@ void CSpotispyDlg::OnBnClickedRadioMuteAds() {
 	volumeSlider->EnableWindow(false);
 
 	m_spotifyAnalyzer->SetAdsBehavior(EAdsBehavior::Mute);
+
+	m_dlgSave.Insert("muteAds", true);
+	m_dlgSave.SaveToFile();
 }
 
 
@@ -177,6 +216,9 @@ void CSpotispyDlg::OnBnClickedRadioLowVolAds() {
 	volumeSlider->EnableWindow(true);
 
 	m_spotifyAnalyzer->SetAdsBehavior(EAdsBehavior::LowerVolume);
+
+	m_dlgSave.Insert("muteAds", false);
+	m_dlgSave.SaveToFile();
 }
 
 void CSpotispyDlg::OnNMCustomdrawSlider1(NMHDR *pNMHDR, LRESULT *pResult) {
@@ -184,6 +226,11 @@ void CSpotispyDlg::OnNMCustomdrawSlider1(NMHDR *pNMHDR, LRESULT *pResult) {
 
 	CString volPercentageText;
 	volPercentageText.Format(L"%d", volumeSlider->GetPos());
+
+	auto adVol = volumeSlider->GetPos();
+
+	m_dlgSave.Insert("adVolume", adVol);
+	// We don't save it here cause it would be called 100 times, so on crash it might be gone .. TODO?
 
 	auto* volPercentageEdit = static_cast<CEdit*>(GetDlgItem(IDC_VOLPERCENTAGE));
 	volPercentageEdit->SetWindowText(volPercentageText);
@@ -193,6 +240,9 @@ void CSpotispyDlg::OnBnClickedCheckSaveTwitchInfo() {
 	auto* saveTwitchInfoCheckBtn = static_cast<CButton*>(GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
 
 	m_saveTwitchInfo = saveTwitchInfoCheckBtn->GetCheck() == 1;
+
+	m_dlgSave.Insert("saveStreamInfo", m_saveTwitchInfo);
+	m_dlgSave.SaveToFile();
 }
 
 bool CSpotispyDlg::GetSaveTwitchInfo() const noexcept {
@@ -210,6 +260,11 @@ void CSpotispyDlg::OnBnClickedButtonSaveTwitchFormat() {
 	GetDlgItemText(IDC_EDIT_TWITCH_FORMAT, twitchFormat);
 
 	m_twitchFormat = std::wstring{twitchFormat};
+
+	std::string formatStr;
+	Poco::UnicodeConverter::toUTF8(m_twitchFormat, formatStr);
+	m_dlgSave.Insert("formatStreamText", formatStr);
+	m_dlgSave.SaveToFile();
 }
 
 
@@ -219,4 +274,9 @@ void CSpotispyDlg::OnBnClickedButtonSaveAdText() {
 	GetDlgItemText(IDC_EDIT_AD_TEXT, adText);
 
 	m_adText = std::wstring{adText};
+
+	std::string adStr;
+	Poco::UnicodeConverter::toUTF8(m_adText, adStr);
+	m_dlgSave.Insert("adStreamText", adStr);
+	m_dlgSave.SaveToFile();
 }

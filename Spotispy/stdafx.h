@@ -36,6 +36,9 @@
 #include <random>
 #include <sstream>
 #include <future>
+#include <fstream>
+#include <locale>
+#include <codecvt>
 
 #ifndef _AFX_NO_OLE_SUPPORT
 #include <afxdtctl.h>           // MFC-Unterstützung für allgemeine Steuerelemente von Internet Explorer 4

@@ -45,7 +45,7 @@ SpotifyWebHook::SpotifyWebHook(std::chrono::milliseconds refreshRate)
 			}
 
 			bool needsInit = false;
-			bool spotifyRunning = Helper::IsProcessRunning(L"spotify.exe", true);
+			bool spotifyRunning = IsProcessRunning(L"spotify.exe", true);
 
 			{
 				std::lock_guard<std::mutex> lock{m_mutex};
@@ -72,7 +72,7 @@ SpotifyWebHook::SpotifyWebHook(std::chrono::milliseconds refreshRate)
 			// We just fire a std::async to notify this thread after n seconds,
 			//std::thread{}.detach();
 
-			trueAsync([this, refreshRate] {
+			TrueAsync([this, refreshRate] {
 				std::this_thread::sleep_for(refreshRate);
 				m_refreshRequest = true;
 				m_condVar.notify_all();
@@ -87,7 +87,7 @@ SpotifyWebHook::~SpotifyWebHook() {
 	m_thread->join();
 }
 
-void SpotifyWebHook::Init() {
+void SpotifyWebHook::Init() noexcept {
 	using namespace Poco;
 	using namespace Poco::Net;
 
@@ -183,7 +183,8 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 		}
 
 		if (object->has("client_version")) {
-			metaData.m_clientVersion = ConvertStrToWStr(object->get("client_version").extract<std::string>());
+			auto str = object->get("client_version").extract<std::string>();
+			UnicodeConverter::toUTF16(str, metaData.m_clientVersion);
 		}
 
 		if (object->has("playing")) {
@@ -214,16 +215,25 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 		if (object->has("track")) {
 			auto trackData = object->get("track").extract<Object::Ptr>();
 			if (trackData->has("artist_resource")) {
-				auto str = trackData->get("artist_resource").extract<Object::Ptr>()->get("name").extract<std::string>();
-				UnicodeConverter::toUTF32(str, metaData.m_artistName);
+				auto artist = trackData->get("artist_resource").extract<Object::Ptr>();
+				if (artist->has("name")) {
+					auto str = artist->get("name").extract<std::string>();
+					UnicodeConverter::toUTF16(str, metaData.m_artistName);
+				}
 			}
 			if (trackData->has("track_resource")) {
-				auto str = trackData->get("track_resource").extract<Object::Ptr>()->get("name").extract<std::string>();
-				UnicodeConverter::toUTF32(str, metaData.m_trackName);
+				auto track = trackData->get("track_resource").extract<Object::Ptr>();
+				if (track->has("name")) {
+					auto str = track->get("name").extract<std::string>();
+					UnicodeConverter::toUTF16(str, metaData.m_trackName);
+				}
 			}
 			if (trackData->has("album_resource")) {
-				auto str= trackData->get("album_resource").extract<Object::Ptr>()->get("name").extract<std::string>();
-				UnicodeConverter::toUTF32(str, metaData.m_albumName);
+				auto album = trackData->get("album_resource").extract<Object::Ptr>();
+				if (album->has("name")) {
+					auto str = album->get("name").extract<std::string>();
+					UnicodeConverter::toUTF16(str, metaData.m_albumName);
+				}
 			}
 			if (trackData->has("length")) {
 				int length = trackData->get("length").extract<int>();
@@ -234,15 +244,19 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 			}
 		}
 
-		if (object->has("playing_position")) {
+		if (object->has("playing_position") && !metaData.m_isAd) {
 			float playPos = static_cast<float>(object->get("playing_position").extract<double>());
 			if (playPos < 0.f) {
 				playPos = 0.f;
 			}
 
 			metaData.m_trackPos = std::chrono::milliseconds(static_cast<int>(playPos * 1000.f));
-			metaData.m_initTime = std::chrono::steady_clock::now();
 		}
+		else if (object->has("playing_position") && metaData.m_isAd) {
+			metaData.m_trackPos = std::chrono::milliseconds(0);
+		}
+
+		metaData.m_initTime = std::chrono::steady_clock::now();
 
 		std::lock_guard<std::mutex> lock{m_mutex};
 		m_bufferedMetaData = std::move(metaData);

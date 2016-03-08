@@ -56,7 +56,6 @@ private:
 	bool m_spotifyAudioInitialized				{false};
 	ISimpleAudioVolume* m_spotifyAudio			{nullptr};
 	float m_savedVolume							{1.0f};
-	bool m_muted								{false};
 	std::unique_ptr<SpotifyWebHook> m_webHook	{nullptr};
 	std::unique_ptr<SpotifyMetaData> m_metaData	{nullptr};
 };
