@@ -12,7 +12,7 @@ class JSONSaveFile
 {
 public:
 	JSONSaveFile() noexcept;
-	explicit JSONSaveFile(std::string fileName) noexcept;
+	explicit JSONSaveFile(std::string fileName);
 
 	~JSONSaveFile();
 
@@ -22,12 +22,12 @@ public:
 	JSONSaveFile& operator= (JSONSaveFile&&) = default;
 
 	// Set's the file name, discards all saved data and inits data with new file if file exists
-	void SetFileName(std::string fileName) noexcept;
+	void SetFileName(std::string fileName);
 
 	// Inits class data with file data
-	bool LoadFromFile() noexcept;
+	bool LoadFromFile();
 
-	bool SaveToFile() const noexcept;
+	bool SaveToFile() const;
 
 	bool Has(const std::string& key) const noexcept;
 
@@ -35,18 +35,18 @@ public:
 	T Get(const std::string& key) const;
 
 	template<typename T>
-	T GetOrSaveDefault(const std::string& key, T defaultVal) noexcept;
+	T GetOrSaveDefault(const std::string& key, T defaultVal);
 
 	template <typename T>
-	bool Insert(const std::string& key, T value) noexcept;
+	bool Insert(const std::string& key, T value);
 
 private:
 	// Clears class data
-	void ClearData() noexcept;
+	void ClearData();
 
 	std::string m_fileName;
 
-	Poco::JSON::Object::Ptr m_data;
+	Poco::JSON::Object::Ptr m_data {nullptr};
 };
 
 template<typename T>
@@ -55,7 +55,7 @@ inline T JSONSaveFile::Get(const std::string& key) const {
 }
 
 template<typename T>
-inline T JSONSaveFile::GetOrSaveDefault(const std::string& key, T defaultVal) noexcept {
+inline T JSONSaveFile::GetOrSaveDefault(const std::string& key, T defaultVal) {
 	if (Has(key)) {
 		try {
 			auto val = Get<T>(key);
@@ -73,7 +73,7 @@ inline T JSONSaveFile::GetOrSaveDefault(const std::string& key, T defaultVal) no
 }
 
 template<typename T>
-inline bool JSONSaveFile::Insert(const std::string& key, T value) noexcept {
+inline bool JSONSaveFile::Insert(const std::string& key, T value) {
 	try {
 		auto var = Poco::Dynamic::Var(value);
 

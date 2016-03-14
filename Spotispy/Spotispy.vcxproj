@@ -240,6 +240,8 @@
     <ClInclude Include="SpotispyDlg.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="UpdateDlg.h" />
+    <ClInclude Include="UpdateNotifier.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CommonCOM.cpp" />
@@ -255,6 +257,8 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="UpdateDlg.cpp" />
+    <ClCompile Include="UpdateNotifier.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Spotispy.rc" />

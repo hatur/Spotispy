@@ -6,9 +6,8 @@
 
 JSONSaveFile::JSONSaveFile() noexcept {}
 
-JSONSaveFile::JSONSaveFile(std::string fileName) noexcept
-	: m_fileName{std::move(fileName)}
-	, m_data{nullptr} {
+JSONSaveFile::JSONSaveFile(std::string fileName)
+	: m_fileName{std::move(fileName)} {
 	
 }
 
@@ -16,11 +15,11 @@ JSONSaveFile::~JSONSaveFile() {
 	SaveToFile();
 }
 
-void JSONSaveFile::SetFileName(std::string fileName) noexcept {
+void JSONSaveFile::SetFileName(std::string fileName) {
 	m_fileName = std::move(fileName);
 }
 
-bool JSONSaveFile::LoadFromFile() noexcept {
+bool JSONSaveFile::LoadFromFile() {
 	using namespace Poco;
 	using namespace Poco::JSON;
 
@@ -34,7 +33,7 @@ bool JSONSaveFile::LoadFromFile() noexcept {
 	Parser parser;
 
 	if (!fileStream.good()) {
-		m_data = parser.parse("{ }").extract<Object::Ptr>();
+		m_data = new JSON::Object{};
 		return false;
 	}
 
@@ -50,13 +49,13 @@ bool JSONSaveFile::LoadFromFile() noexcept {
 	}
 	catch (const std::exception&) {
 		// If we can't read the file we just load an empty file it since everything has to declare default anyways..
-		m_data = parser.parse("{ }").extract<Object::Ptr>();
+		m_data = new JSON::Object{};
 	}
 
 	return true;
 }
 
-bool JSONSaveFile::SaveToFile() const noexcept {
+bool JSONSaveFile::SaveToFile() const {
 	std::wofstream fileOut;
 	std::locale loc{std::locale::classic(),  new std::codecvt_utf8<wchar_t>};
 	fileOut.imbue(loc);

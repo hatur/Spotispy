@@ -3,12 +3,21 @@
 #include "SpotifyAnalyzer.h"
 #include "JSONSaveFile.h"
 
-const std::wstring SPOTISPY_VERSION = L"v0.4.1";
+const std::wstring SPOTISPY_VERSION = L"v0.4.2";
+const std::wstring SPOTISPY_BUILD_DATE = L"14.03.2016";
+
+class UpdateNotifier;
 
 class CSpotispyDlg : public CDialogEx
 {
 public:
-	explicit CSpotispyDlg(CWnd* pParent = NULL);
+	explicit CSpotispyDlg(CWnd* pParent = nullptr);
+	~CSpotispyDlg();
+
+	CSpotispyDlg(const CSpotispyDlg&) = default;
+	CSpotispyDlg& operator= (const CSpotispyDlg&) = default;
+	CSpotispyDlg(CSpotispyDlg&&) = default;
+	CSpotispyDlg& operator= (CSpotispyDlg&&) = default;
 
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_SPOTISPY_DIALOG };
@@ -19,8 +28,10 @@ public:
 	bool GetSaveTwitchInfo() const noexcept;
 
 protected:
-	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV-Unterstützung
+	void DoDataExchange(CDataExchange* pDX) override;	// DDX/DDV-Unterstützung
 
+private:
+	void OnTimer(UINT nIDEvent);
 	afx_msg void OnBnClickedOk();
 	afx_msg void OnBnClickedRadioMuteAds();
 	afx_msg void OnBnClickedRadioLowVolAds();
@@ -29,27 +40,30 @@ protected:
 	afx_msg void OnBnClickedButtonSaveTwitchFormat();
 	afx_msg void OnBnClickedButtonSaveAdText();
 
-	virtual BOOL OnInitDialog();
+	BOOL OnInitDialog() override;
 	afx_msg void OnPaint();
 	afx_msg void OnClose();
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 
-private:
-	void OnTimer(UINT nIDEvent);
-
 	HICON m_hIcon;
 
-	std::unique_ptr<SpotifyAnalyzer> m_spotifyAnalyzer;
+	std::unique_ptr<SpotifyAnalyzer> m_spotifyAnalyzer {nullptr};
+	std::unique_ptr<UpdateNotifier> m_updateNotifier {nullptr};
 
 	JSONSaveFile m_dlgSave{"dlgPrefs.json"};
 
 	bool m_saveTwitchInfo;
 
+	std::wstring m_twitchFilePath;
+
 	std::wstring m_twitchFormat;
 	std::wstring m_adText;
 
 	std::wstring m_bufferedPlayString;
+public:
+	afx_msg void OnBnClickedButtonSaveStreamInfo();
+	afx_msg void OnNMClickSyslinkCheckUpdate(NMHDR *pNMHDR, LRESULT *pResult);
 };
 
 BOOL CALLBACK EnumWindowsProc_GetWindowTitle(HWND hwnd, LPARAM lParam);

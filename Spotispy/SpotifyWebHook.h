@@ -52,36 +52,41 @@ public:
 	bool IsInitialized() const noexcept;
 
 	// This returns the current statusmessages and deletes them from the internal vetor
-	std::queue<std::wstring> FetchStatusMessages() noexcept;
+	std::queue<std::wstring> FetchStatusMessages();
 
 	// Returns the gathered Data
-	std::tuple<bool, std::unique_ptr<SpotifyMetaData>> GetMetaData() const noexcept;
+	std::tuple<bool, std::unique_ptr<SpotifyMetaData>> GetMetaData() const;
 
 	bool DoesSpotfiyNeedARestart() const noexcept;
 
 private:
 	unsigned int GetWorkingPort() const;
-	std::string GenerateSpotilocalHostname();
-	std::string GenerateLocalHostURL(const std::string& rndHostName, unsigned int port);
+	std::string GenerateSpotilocalHostname() const;
+	std::string GenerateLocalHostURL(const std::string& rndHostName, unsigned int port) const;
 
 	std::string SetupOAuth();
 	std::string SetupCSRF();
 
 	// Init() and RefreshMetaData() are automatically called through the worker thread, never call them manually
 
-	void Init() noexcept;
-	void DeInit() noexcept;
-	void RefreshMetaData() noexcept;
+	void Init();
+	void DeInit();
+	void RefreshMetaData();
 
 	// This function first checks if there already are too many entries and if not pushes it to m_statusMessages
 	void PushStatusEntry(EStatusEntryType statusEntryType, std::wstring statusEntry);
 
-	const Poco::Net::Context::Ptr m_sslContext;
 	std::chrono::milliseconds m_refreshRate;
 	std::atomic<bool> m_refreshRequest {true};
 
-	std::unique_ptr<std::thread> m_thread {nullptr};
 	std::atomic<bool> m_exitRequested {false};
+	std::unique_ptr<std::thread> m_thread {nullptr};
+	mutable std::mutex m_mutex;
+	std::condition_variable m_condVar;
+
+	std::unique_ptr<std::thread> m_notifierThread{nullptr};
+	std::atomic<bool> m_notifierThreadNotification;
+	std::condition_variable m_notifierThreadCondVar;
 
 	bool m_hookInitialized {false};
 
@@ -96,8 +101,4 @@ private:
 
 	unsigned int m_maxQueuedStatusMessages {20};
 	std::queue<std::wstring> m_statusMessages;
-	mutable std::mutex m_mutex;
-
-	std::condition_variable m_condVar;
-	mutable std::mutex m_condMutex;
 };

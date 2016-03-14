@@ -18,11 +18,11 @@
 #include "Poco/UnicodeConverter.h"
 
 SpotifyWebHook::SpotifyWebHook(std::chrono::milliseconds refreshRate)
-	: m_refreshRate{std::move(refreshRate)}
-	, m_sslContext{new Poco::Net::Context(Poco::Net::Context::CLIENT_USE, "", "", "", Poco::Net::Context::VERIFY_NONE, 9, false, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH")} {
+	: m_refreshRate{std::move(refreshRate)} {
 	
 	m_thread = std::make_unique<std::thread>(std::thread{[this] {
-		std::unique_lock<std::mutex> condLock(m_condMutex);
+		std::mutex condMutex;
+		std::unique_lock<std::mutex> condLock(condMutex);
 
 		while (true) {
 			// Signal from main thread to exit this worker
@@ -62,6 +62,36 @@ SpotifyWebHook::SpotifyWebHook(std::chrono::milliseconds refreshRate)
 				DeInit();
 			}
 
+			// Notify notifier Thread to wake us up after refreshRate
+			m_notifierThreadNotification = true;
+			m_notifierThreadCondVar.notify_all();
+		}
+	}});
+
+	m_notifierThread = std::make_unique<std::thread>([this] {
+		std::mutex notifierMutex;
+		std::unique_lock<std::mutex> notifierLock{notifierMutex};
+
+		while (true) {
+			m_notifierThreadCondVar.wait(notifierLock, [this] {
+				if (m_exitRequested) {
+					return true;
+				}
+
+				if (m_notifierThreadNotification) {
+					m_notifierThreadNotification = false;
+					return true;
+				}
+
+				return false;
+			});
+
+			if (m_exitRequested) {
+				break;
+			}
+
+			m_notifierThreadNotification = false;
+
 			std::chrono::milliseconds refreshRate;
 
 			{
@@ -69,25 +99,24 @@ SpotifyWebHook::SpotifyWebHook(std::chrono::milliseconds refreshRate)
 				refreshRate = m_refreshRate;
 			}
 
-			// We just fire a std::async to notify this thread after n seconds,
-			//std::thread{}.detach();
-
-			TrueAsync([this, refreshRate] {
-				std::this_thread::sleep_for(refreshRate);
-				m_refreshRequest = true;
-				m_condVar.notify_all();
-			});
+			std::this_thread::sleep_for(refreshRate);
+			m_refreshRequest = true;
+			m_condVar.notify_all();
 		}
-	}});
+	});
 }
 
 SpotifyWebHook::~SpotifyWebHook() {
 	m_exitRequested = true;
+
 	m_condVar.notify_all();
+	m_notifierThreadCondVar.notify_all();
+
 	m_thread->join();
+	m_notifierThread->join();
 }
 
-void SpotifyWebHook::Init() noexcept {
+void SpotifyWebHook::Init() {
 	using namespace Poco;
 	using namespace Poco::Net;
 
@@ -118,12 +147,12 @@ void SpotifyWebHook::Init() noexcept {
 	}
 }
 
-void SpotifyWebHook::DeInit() noexcept {
+void SpotifyWebHook::DeInit() {
 	std::lock_guard<std::mutex> lock{m_mutex};
 	m_hookInitialized = false;
 }
 
-void SpotifyWebHook::RefreshMetaData() noexcept {
+void SpotifyWebHook::RefreshMetaData() {
 	using namespace Poco;
 	using namespace Poco::Net;
 	using namespace Poco::JSON;
@@ -138,7 +167,7 @@ void SpotifyWebHook::RefreshMetaData() noexcept {
 		uri.addQueryParameter("csrf", m_csrf);
 		std::string path{uri.getPathAndQuery()};
 
-		HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+		HTTPSClientSession session{uri.getHost(), uri.getPort(), g_sslContext};
 		HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
 		HTTPResponse response;
 
@@ -305,7 +334,7 @@ unsigned int SpotifyWebHook::GetWorkingPort() const {
 				uri.setPath("/simplecsrf/token.json");
 				std::string path{uri.getPathAndQuery()};
 
-				HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+				HTTPSClientSession session{uri.getHost(), uri.getPort(), g_sslContext};
 				HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
 				request.set("Origin", "https://open.spotify.com");
 				HTTPResponse response;
@@ -351,7 +380,7 @@ unsigned int SpotifyWebHook::GetWorkingPort() const {
 	return validPorts.back();
 }
 
-std::string SpotifyWebHook::GenerateSpotilocalHostname() {
+std::string SpotifyWebHook::GenerateSpotilocalHostname() const {
 	const std::string letters{"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"};
 	std::random_device randD;
 	std::string hostname;
@@ -363,7 +392,7 @@ std::string SpotifyWebHook::GenerateSpotilocalHostname() {
 	return hostname + ".spotilocal.com";
 }
 
-std::string SpotifyWebHook::GenerateLocalHostURL(const std::string& rndHostName, unsigned int port) {
+std::string SpotifyWebHook::GenerateLocalHostURL(const std::string& rndHostName, unsigned int port) const {
 	return "https://" + rndHostName + ".spotilocal.com:" + std::to_string(port);
 }
 
@@ -378,7 +407,7 @@ std::string SpotifyWebHook::SetupOAuth() {
 	uri.setPath("/token");
 	std::string path{uri.getPathAndQuery()};
 
-	HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+	HTTPSClientSession session{uri.getHost(), uri.getPort(), g_sslContext};
 	HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
 	HTTPResponse response;
 
@@ -423,18 +452,18 @@ std::string SpotifyWebHook::SetupCSRF() {
 	uri.setPath("/simplecsrf/token.json");
 	std::string path{uri.getPathAndQuery()};
 
-	HTTPSClientSession session{uri.getHost(), uri.getPort(), m_sslContext};
+	HTTPSClientSession session{uri.getHost(), uri.getPort(), g_sslContext};
 	HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
 	request.set("Origin", "https://open.spotify.com");
 	HTTPResponse response;
 
 	session.sendRequest(request);
 
+	auto& is = session.receiveResponse(response);
+
 	if (response.getStatus() != HTTPResponse::HTTP_OK) {
 		throw std::exception("Couldn't fetch CSRF from local Spotify server");
 	}
-
-	auto& is = session.receiveResponse(response);
 
 	std::string content{std::istreambuf_iterator<char>{is},{}};
 
@@ -483,7 +512,7 @@ bool SpotifyWebHook::IsInitialized() const noexcept {
 	return m_hookInitialized;
 }
 
-std::queue<std::wstring> SpotifyWebHook::FetchStatusMessages() noexcept {
+std::queue<std::wstring> SpotifyWebHook::FetchStatusMessages() {
 	std::lock_guard<std::mutex> lock{m_mutex};
 	auto queue = m_statusMessages;
 	while (m_statusMessages.size() > 0) {
@@ -492,7 +521,7 @@ std::queue<std::wstring> SpotifyWebHook::FetchStatusMessages() noexcept {
 	return queue;
 }
 
-std::tuple<bool, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData() const noexcept {
+std::tuple<bool, std::unique_ptr<SpotifyMetaData>> SpotifyWebHook::GetMetaData() const {
 	std::lock_guard<std::mutex> lock{m_mutex};
 	if (!m_metaDataInitialized) {
 		return std::make_tuple(false, nullptr);

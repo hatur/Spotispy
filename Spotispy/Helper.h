@@ -1,10 +1,14 @@
 #pragma once
 
+#include "Poco/Net/Context.h"
+
 /**
 * Helper.h
 *
 * Collection of common helper funcitons
 **/
+
+static Poco::Net::Context::Ptr g_sslContext{new Poco::Net::Context(Poco::Net::Context::CLIENT_USE, "", "", "", Poco::Net::Context::VERIFY_NONE, 9, false, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH")};
 
 // Helper struct for file output
 struct SongInfo {

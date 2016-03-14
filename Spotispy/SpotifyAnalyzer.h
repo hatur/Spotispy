@@ -27,11 +27,11 @@ public:
 	void Analyze();
 
 	// Not used atm, determines if this context (spotify) has the focus, maybe change later
-	void SetFocus(bool focus) noexcept;
-	void SetAdsBehavior(EAdsBehavior newBehavior) noexcept;
+	void SetFocus(bool focus);
+	void SetAdsBehavior(EAdsBehavior newBehavior);
 
 	// Called on program exit, unmutes spotify and sets volume to saved
-	void RestoreDefaults() noexcept;
+	void RestoreDefaults();
 
 	// Expensive(?), enumerates all processes
 	static bool IsSpotifyRunning() noexcept;
@@ -41,22 +41,22 @@ public:
 
 	bool HasFocus() const noexcept;
 	bool IsAdPlaying() const noexcept;
-	std::wstring GetCurrentlyPlayingTrack() const noexcept;
+	std::wstring GetCurrentlyPlayingTrack() const;
 	const SpotifyMetaData* GetMetaData() const noexcept;
 
 private:
-	bool InitSpotifyAudioContext() noexcept;
-	void OnAdStatusChanged() noexcept;
+	bool InitSpotifyAudioContext();
+	void OnAdStatusChanged();
 
 	CWnd* m_mainWindow;
 	std::shared_ptr<CommonCOM> m_com;
 
-	bool m_focus								{false};
-	EAdsBehavior m_adsBehavior					{EAdsBehavior::Mute};
-	bool m_spotifyAudioInitialized				{false};
-	ISimpleAudioVolume* m_spotifyAudio			{nullptr};
-	float m_savedVolume							{1.0f};
-	std::unique_ptr<SpotifyWebHook> m_webHook	{nullptr};
+	bool m_focus {false};
+	EAdsBehavior m_adsBehavior {EAdsBehavior::Mute};
+	bool m_spotifyAudioInitialized {false};
+	ISimpleAudioVolume* m_spotifyAudio {nullptr};
+	float m_savedVolume {1.0f};
+	std::unique_ptr<SpotifyWebHook> m_webHook {nullptr};
 	std::unique_ptr<SpotifyMetaData> m_metaData	{nullptr};
 };
 

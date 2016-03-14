@@ -1,7 +1,10 @@
 #include "stdafx.h"
-#include "Spotispy.h"
 #include "SpotispyDlg.h"
+#include "Spotispy.h"
 #include "afxdialogex.h"
+
+#include "UpdateNotifier.h"
+#include "UpdateDlg.h"
 #include "CommonCOM.h"
 #include "Helper.h"
 
@@ -12,10 +15,11 @@
 #endif
 
 CSpotispyDlg::CSpotispyDlg(CWnd* pParent)
-	: CDialogEx(IDD_SPOTISPY_DIALOG, pParent)
-	, m_spotifyAnalyzer{nullptr} {
+	: CDialogEx(IDD_SPOTISPY_DIALOG, pParent) {
 	m_hIcon = AfxGetApp()->LoadIcon(IDI_ICON1);
 }
+
+CSpotispyDlg::~CSpotispyDlg() = default;
 
 void CSpotispyDlg::DoDataExchange(CDataExchange* pDX) {
 	CDialogEx::DoDataExchange(pDX);
@@ -33,6 +37,8 @@ BEGIN_MESSAGE_MAP(CSpotispyDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_CHECK_SAVE_TWITCHINFO, &CSpotispyDlg::OnBnClickedCheckSaveTwitchInfo)
 	ON_BN_CLICKED(IDC_BUTTON_SAVE_TWITCH_FORMAT, &CSpotispyDlg::OnBnClickedButtonSaveTwitchFormat)
 	ON_BN_CLICKED(IDC_BUTTON_SAVE_AD_TEXT, &CSpotispyDlg::OnBnClickedButtonSaveAdText)
+	ON_BN_CLICKED(IDC_BUTTON_SAVE_STREAM_INFO, &CSpotispyDlg::OnBnClickedButtonSaveStreamInfo)
+	ON_NOTIFY(NM_CLICK, IDC_SYSLINK_CHECK_UPDATE, &CSpotispyDlg::OnNMClickSyslinkCheckUpdate)
 END_MESSAGE_MAP()
 
 BOOL CSpotispyDlg::OnInitDialog() {
@@ -89,6 +95,11 @@ BOOL CSpotispyDlg::OnInitDialog() {
 
 	m_saveTwitchInfo = saveTwitchInfoCheckBtn->GetCheck() == 1;
 
+	std::string streamFilePathDefault = "currentlyPlaying.txt";
+	auto streamFilePath = m_dlgSave.GetOrSaveDefault("streamFilePath", streamFilePathDefault);
+
+	Poco::UnicodeConverter::toUTF16(streamFilePath, m_twitchFilePath);
+
 	std::string formatStreamTextDefault = "Currently playing: %a - %t [%c / %f]";
 	auto formatStreamText = m_dlgSave.GetOrSaveDefault("formatStreamText", formatStreamTextDefault);
 
@@ -115,11 +126,14 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	m_spotifyAnalyzer->SetFocus(true);
 	m_spotifyAnalyzer->Analyze();
 
-	SetTimer(1, 50, nullptr);
-	SetTimer(2, 100, nullptr);	// Play Info
-
 	m_dlgSave.SaveToFile();
 
+	m_updateNotifier = std::make_unique<UpdateNotifier>(SPOTISPY_VERSION, SPOTISPY_BUILD_DATE, this);
+
+	SetTimer(1, 50, nullptr);
+	SetTimer(2, 100, nullptr);	// Play Info
+	SetTimer(3, 2000, nullptr);	// UpdateNotifier
+	
 	return TRUE;
 }
 
@@ -173,16 +187,43 @@ void CSpotispyDlg::OnTimer(UINT nIDEvent) {
 				std::wstring playString = FormatPlayString(m_twitchFormat, twitchInfo);
 
 				if (playString != m_bufferedPlayString) {
-					WritePlayString(playString, L"currentlyPlaying.txt");
+					WritePlayString(playString, m_twitchFilePath);
 					m_bufferedPlayString = playString;
 				}
 			}
 			else if (m_spotifyAnalyzer->HasFocus() && m_spotifyAnalyzer->IsSpotifyRunning() && m_spotifyAnalyzer->IsAdPlaying()) {
-				WritePlayString(m_adText, L"currentlyPlaying.txt");
+				WritePlayString(m_adText, m_twitchFilePath);
 			}
 			else if (m_spotifyAnalyzer->HasFocus() && !m_spotifyAnalyzer->IsSpotifyRunning()) {
-				WritePlayString(L"", L"currentlyPlaying.txt");
+				WritePlayString(L"", m_twitchFilePath);
 			}
+		}
+	}
+	else if (nIDEvent == 3) {
+		if (m_updateNotifier->HasData()) {
+			UpdateInformation currentVersion;
+			currentVersion.m_buildDate = SPOTISPY_BUILD_DATE;
+			currentVersion.m_version = SPOTISPY_VERSION;
+
+			// Internally sets HasData to false on fetch
+			auto availableVersion = m_updateNotifier->FetchData();
+
+			auto showUpdateInformationDefault = true;
+			auto showUpdateInformation = m_dlgSave.GetOrSaveDefault("showUpdateInformation", showUpdateInformationDefault);
+
+			if (currentVersion.m_buildDate != availableVersion.m_buildDate && showUpdateInformation == true) {
+				UpdateDlg dialog{currentVersion, availableVersion, L"https://github.com/hatur/Spotispy/releases"};
+				auto response = dialog.DoModal();
+
+				if (response == IDOK) {
+					
+				}
+				else if (response == IDCANCEL) {
+					m_dlgSave.Insert("showUpdateInformation", false);
+				}
+			}
+
+			m_dlgSave.SaveToFile();
 		}
 	}
 }
@@ -279,4 +320,49 @@ void CSpotispyDlg::OnBnClickedButtonSaveAdText() {
 	Poco::UnicodeConverter::toUTF8(m_adText, adStr);
 	m_dlgSave.Insert("adStreamText", adStr);
 	m_dlgSave.SaveToFile();
+}
+
+
+void CSpotispyDlg::OnBnClickedButtonSaveStreamInfo() {
+	// TODO: Fügen Sie hier Ihren Kontrollbehandlungscode für die Benachrichtigung ein.
+
+	const int bufSize = 512;
+	wchar_t currentDirectory[bufSize];
+
+	GetCurrentDirectoryW(bufSize, currentDirectory);
+
+	CFileDialog fileDialog{
+		FALSE,
+		L"txt",
+		L"currentlyPlaying",
+		OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
+		L"Text File (*.txt)|*.txt||",
+		this,
+	};
+
+	fileDialog.m_ofn.lpstrInitialDir = currentDirectory;
+
+	if (fileDialog.DoModal() == IDOK) {
+		CString fileName = fileDialog.GetFileTitle();
+
+		if (!fileName.IsEmpty()) {
+			CString pathName = fileDialog.GetPathName();
+
+			std::wofstream testFile{pathName};
+			if (testFile.good()) {
+				std::string pathString;
+
+				Poco::UnicodeConverter::toUTF8(pathName, pathString);
+				m_dlgSave.Insert("streamFilePath", pathString);
+				m_dlgSave.SaveToFile();
+
+				m_twitchFilePath = std::move(pathName);
+			}
+		}
+	}
+}
+
+
+void CSpotispyDlg::OnNMClickSyslinkCheckUpdate(NMHDR *pNMHDR, LRESULT *pResult) {
+	ShellExecute(0, L"open", L"https://github.com/hatur/Spotispy", 0, 0, SW_SHOWNORMAL);
 }

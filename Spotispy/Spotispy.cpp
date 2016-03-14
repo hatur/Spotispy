@@ -94,4 +94,3 @@ BOOL CSpotispyApp::InitInstance()
 	//  Anwendung verlassen, anstatt das Nachrichtensystem der Anwendung zu starten.
 	return FALSE;
 }
-

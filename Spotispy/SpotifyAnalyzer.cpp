@@ -95,18 +95,18 @@ void SpotifyAnalyzer::Analyze() {
 	}
 }
 
-void SpotifyAnalyzer::RestoreDefaults() noexcept {
+void SpotifyAnalyzer::RestoreDefaults() {
 	if (m_spotifyAudio != nullptr) {
 		m_spotifyAudio->SetMute(0, 0);
 		m_spotifyAudio->SetMasterVolume(m_savedVolume, 0);
 	}
 }
 
-void SpotifyAnalyzer::SetFocus(bool focus) noexcept {
+void SpotifyAnalyzer::SetFocus(bool focus) {
 	m_focus = focus;
 }
 
-void SpotifyAnalyzer::SetAdsBehavior(EAdsBehavior newBehavior) noexcept {
+void SpotifyAnalyzer::SetAdsBehavior(EAdsBehavior newBehavior) {
 	m_adsBehavior = newBehavior;
 
 	// Reset mode
@@ -114,7 +114,7 @@ void SpotifyAnalyzer::SetAdsBehavior(EAdsBehavior newBehavior) noexcept {
 	OnAdStatusChanged();
 }
 
-bool SpotifyAnalyzer::InitSpotifyAudioContext() noexcept {
+bool SpotifyAnalyzer::InitSpotifyAudioContext() {
 	HRESULT hr;
 
 	IMMDeviceEnumerator* deviceEnumerator = nullptr;
@@ -191,7 +191,7 @@ bool SpotifyAnalyzer::InitSpotifyAudioContext() noexcept {
 	return foundSpotify;
 }
 
-void SpotifyAnalyzer::OnAdStatusChanged() noexcept {
+void SpotifyAnalyzer::OnAdStatusChanged() {
 	if (m_spotifyAudio == nullptr) {
 		return;
 	}
@@ -248,7 +248,7 @@ bool SpotifyAnalyzer::IsWebHelperRunning() noexcept {
 	return IsProcessRunning(L"spotifywebhelper.exe", true);
 }
 
-std::wstring SpotifyAnalyzer::GetCurrentlyPlayingTrack() const noexcept {
+std::wstring SpotifyAnalyzer::GetCurrentlyPlayingTrack() const {
 	CString dialogTemp;
 	m_mainWindow->GetDlgItemText(IDC_EDIT_SONG_SPOTIFY, dialogTemp);
 

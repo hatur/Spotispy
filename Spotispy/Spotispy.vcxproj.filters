@@ -153,6 +153,12 @@
     <ClInclude Include="JSONSaveFile.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="UpdateNotifier.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="UpdateDlg.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Spotispy.cpp">
@@ -177,6 +183,12 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="JSONSaveFile.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="UpdateNotifier.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="UpdateDlg.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>
