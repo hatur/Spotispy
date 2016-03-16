@@ -11,9 +11,9 @@ SpotifyAnalyzer::SpotifyAnalyzer(CWnd* mainWindow, std::shared_ptr<CommonCOM> co
 	InitSpotifyAudioContext();
 
 	// Fail safe inits..
-	auto* muteAdsRadio = static_cast<CButton*>(m_mainWindow->GetDlgItem(IDC_RADIO_MUTEADS));
+	auto& muteAdsRadio = dynamic_cast<CButton&>(*m_mainWindow->GetDlgItem(IDC_RADIO_MUTEADS));
 
-	if (muteAdsRadio->GetCheck() == 1) {
+	if (muteAdsRadio.GetCheck() == 1) {
 		m_adsBehavior = EAdsBehavior::Mute;
 	}
 	else {
@@ -206,8 +206,8 @@ void SpotifyAnalyzer::OnAdStatusChanged() {
 		}
 		else if (m_adsBehavior == EAdsBehavior::LowerVolume) {
 			// This currently get's continously called .. we need a approx check for float since we cant == them
-			auto* volumeSlider = static_cast<CSliderCtrl*>(m_mainWindow->GetDlgItem(IDC_SLIDER1));
-			float newVolume = static_cast<float>(volumeSlider->GetPos()) / 100.f;
+			auto& volumeSlider = dynamic_cast<CSliderCtrl&>(*m_mainWindow->GetDlgItem(IDC_SLIDER1));
+			float newVolume = static_cast<float>(volumeSlider.GetPos()) / 100.f;
 
 			m_spotifyAudio->SetMasterVolume(newVolume, 0);
 		}

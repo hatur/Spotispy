@@ -18,11 +18,11 @@ BOOL UpdateDlg::OnInitDialog() {
 	SetIcon(m_hIcon, TRUE);
 	SetIcon(m_hIcon, FALSE);
 
-	auto currentVersionST = static_cast<CStatic*>(GetDlgItem(IDC_CURRENT_VERSION));
-	currentVersionST->SetWindowText(CString{m_currentVersion.m_version.c_str()});
+	auto& currentVersionST = dynamic_cast<CStatic&>(*GetDlgItem(IDC_CURRENT_VERSION));
+	currentVersionST.SetWindowText(CString{m_currentVersion.m_version.c_str()});
 
-	auto availableVersionST = static_cast<CStatic*>(GetDlgItem(IDC_AVAILABLE_VERSION));
-	availableVersionST->SetWindowText(CString{m_availableVersion.m_version.c_str()});
+	auto& availableVersionST = dynamic_cast<CStatic&>(*GetDlgItem(IDC_AVAILABLE_VERSION));
+	availableVersionST.SetWindowText(CString{m_availableVersion.m_version.c_str()});
 
 	return TRUE;
 }
