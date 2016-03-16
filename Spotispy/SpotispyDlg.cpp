@@ -62,11 +62,7 @@ BOOL CSpotispyDlg::OnInitDialog() {
 		CheckRadioButton(IDC_RADIO_MUTEADS, IDC_RADIO_LOWVOLADS, IDC_RADIO_LOWVOLADS);
 	}
 	
-<<<<<<< HEAD
-	auto* volumeSlider = dynamic_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
-=======
 	auto* volumeSlider = static_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
->>>>>>> parent of 6fef810... changed static_cast downcasts to dynamic_cast to reference
 	volumeSlider->SetRange(0, 100, true);
 
 	int adVolumeDefault = 10;
@@ -80,13 +76,9 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	auto* volPercentageEdit = static_cast<CEdit*>(GetDlgItem(IDC_VOLPERCENTAGE));
 	volPercentageEdit->SetWindowText(volPercentageText);
 
-<<<<<<< HEAD
-	auto& muteAdsRadio = dynamic_cast<CButton&>(*GetDlgItem(IDC_RADIO_MUTEADS));
-	if (muteAdsRadio.GetCheck() == 1) {
-=======
+
 	auto* muteAdsRadio = static_cast<CButton*>(GetDlgItem(IDC_RADIO_MUTEADS));
 	if (muteAdsRadio->GetCheck() == 1) {
->>>>>>> parent of 6fef810... changed static_cast downcasts to dynamic_cast to reference
 		volumeSlider->EnableWindow(false);
 	}
 
