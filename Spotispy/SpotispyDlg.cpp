@@ -62,7 +62,11 @@ BOOL CSpotispyDlg::OnInitDialog() {
 		CheckRadioButton(IDC_RADIO_MUTEADS, IDC_RADIO_LOWVOLADS, IDC_RADIO_LOWVOLADS);
 	}
 	
+<<<<<<< HEAD
 	auto* volumeSlider = dynamic_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
+=======
+	auto* volumeSlider = static_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
+>>>>>>> parent of 6fef810... changed static_cast downcasts to dynamic_cast to reference
 	volumeSlider->SetRange(0, 100, true);
 
 	int adVolumeDefault = 10;
@@ -73,27 +77,32 @@ BOOL CSpotispyDlg::OnInitDialog() {
 	CString volPercentageText;
 	volPercentageText.Format(L"%d", volumeSlider->GetPos());
 
-	auto& volPercentageEdit = dynamic_cast<CEdit&>(*GetDlgItem(IDC_VOLPERCENTAGE));
-	volPercentageEdit.SetWindowText(volPercentageText);
+	auto* volPercentageEdit = static_cast<CEdit*>(GetDlgItem(IDC_VOLPERCENTAGE));
+	volPercentageEdit->SetWindowText(volPercentageText);
 
+<<<<<<< HEAD
 	auto& muteAdsRadio = dynamic_cast<CButton&>(*GetDlgItem(IDC_RADIO_MUTEADS));
 	if (muteAdsRadio.GetCheck() == 1) {
+=======
+	auto* muteAdsRadio = static_cast<CButton*>(GetDlgItem(IDC_RADIO_MUTEADS));
+	if (muteAdsRadio->GetCheck() == 1) {
+>>>>>>> parent of 6fef810... changed static_cast downcasts to dynamic_cast to reference
 		volumeSlider->EnableWindow(false);
 	}
 
 	bool saveStreamInfoDefault = false;
 	auto saveStreamInfo = m_dlgSave.GetOrSaveDefault("saveStreamInfo", saveStreamInfoDefault);
 
-	auto& saveTwitchInfoCheckBtn = dynamic_cast<CButton&>(*GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
+	auto* saveTwitchInfoCheckBtn = static_cast<CButton*>(GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
 
 	if (saveStreamInfo) {
-		saveTwitchInfoCheckBtn.SetCheck(1);
+		saveTwitchInfoCheckBtn->SetCheck(1);
 	}
 	else {
-		saveTwitchInfoCheckBtn.SetCheck(0);
+		saveTwitchInfoCheckBtn->SetCheck(0);
 	}
 
-	m_saveTwitchInfo = saveTwitchInfoCheckBtn.GetCheck() == 1;
+	m_saveTwitchInfo = saveTwitchInfoCheckBtn->GetCheck() == 1;
 
 	std::string streamFilePathDefault = "currentlyPlaying.txt";
 	auto streamFilePath = m_dlgSave.GetOrSaveDefault("streamFilePath", streamFilePathDefault);
@@ -105,16 +114,16 @@ BOOL CSpotispyDlg::OnInitDialog() {
 
 	Poco::UnicodeConverter::toUTF16(formatStreamText, m_twitchFormat);
 
-	auto& twitchSavePatternEdit = dynamic_cast<CEdit&>(*GetDlgItem(IDC_EDIT_TWITCH_FORMAT));
-	twitchSavePatternEdit.SetWindowText(CString{m_twitchFormat.c_str()});
+	auto* twitchSavePatternEdit = static_cast<CEdit*>(GetDlgItem(IDC_EDIT_TWITCH_FORMAT));
+	twitchSavePatternEdit->SetWindowText(CString{m_twitchFormat.c_str()});
 
 	std::string adStreamTextDefault = "..waiting..";
 	auto adStreamText = m_dlgSave.GetOrSaveDefault("adStreamText", adStreamTextDefault);
 
 	Poco::UnicodeConverter::toUTF16(adStreamText, m_adText);
 
-	auto& adTextEdit = dynamic_cast<CEdit&>(*GetDlgItem(IDC_EDIT_AD_TEXT));
-	adTextEdit.SetWindowText(CString{m_adText.c_str()});
+	auto* adTextEdit = static_cast<CEdit*>(GetDlgItem(IDC_EDIT_AD_TEXT));
+	adTextEdit->SetWindowText(CString{m_adText.c_str()});
 
 	auto sharedCom = std::make_shared<CommonCOM>();
 	if (!sharedCom->IsInitialized()) {
@@ -242,8 +251,8 @@ void CSpotispyDlg::OnBnClickedOk() {
 }
 
 void CSpotispyDlg::OnBnClickedRadioMuteAds() {
-	auto& volumeSlider = dynamic_cast<CSliderCtrl&>(*GetDlgItem(IDC_SLIDER1));
-	volumeSlider.EnableWindow(false);
+	auto* volumeSlider = static_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
+	volumeSlider->EnableWindow(false);
 
 	m_spotifyAnalyzer->SetAdsBehavior(EAdsBehavior::Mute);
 
@@ -253,8 +262,8 @@ void CSpotispyDlg::OnBnClickedRadioMuteAds() {
 
 
 void CSpotispyDlg::OnBnClickedRadioLowVolAds() {
-	auto& volumeSlider = dynamic_cast<CSliderCtrl&>(*GetDlgItem(IDC_SLIDER1));
-	volumeSlider.EnableWindow(true);
+	auto* volumeSlider = static_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
+	volumeSlider->EnableWindow(true);
 
 	m_spotifyAnalyzer->SetAdsBehavior(EAdsBehavior::LowerVolume);
 
@@ -263,24 +272,24 @@ void CSpotispyDlg::OnBnClickedRadioLowVolAds() {
 }
 
 void CSpotispyDlg::OnNMCustomdrawSlider1(NMHDR *pNMHDR, LRESULT *pResult) {
-	auto& volumeSlider = dynamic_cast<CSliderCtrl&>(*GetDlgItem(IDC_SLIDER1));
+	auto* volumeSlider = static_cast<CSliderCtrl*>(GetDlgItem(IDC_SLIDER1));
 
 	CString volPercentageText;
-	volPercentageText.Format(L"%d", volumeSlider.GetPos());
+	volPercentageText.Format(L"%d", volumeSlider->GetPos());
 
-	auto adVol = volumeSlider.GetPos();
+	auto adVol = volumeSlider->GetPos();
 
 	m_dlgSave.Insert("adVolume", adVol);
 	// We don't save it here cause it would be called 100 times, so on crash it might be gone .. TODO?
 
-	auto& volPercentageEdit = dynamic_cast<CEdit&>(*GetDlgItem(IDC_VOLPERCENTAGE));
-	volPercentageEdit.SetWindowText(volPercentageText);
+	auto* volPercentageEdit = static_cast<CEdit*>(GetDlgItem(IDC_VOLPERCENTAGE));
+	volPercentageEdit->SetWindowText(volPercentageText);
 }
 
 void CSpotispyDlg::OnBnClickedCheckSaveTwitchInfo() {
-	auto& saveTwitchInfoCheckBtn = dynamic_cast<CButton&>(*GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
+	auto* saveTwitchInfoCheckBtn = static_cast<CButton*>(GetDlgItem(IDC_CHECK_SAVE_TWITCHINFO));
 
-	m_saveTwitchInfo = saveTwitchInfoCheckBtn.GetCheck() == 1;
+	m_saveTwitchInfo = saveTwitchInfoCheckBtn->GetCheck() == 1;
 
 	m_dlgSave.Insert("saveStreamInfo", m_saveTwitchInfo);
 	m_dlgSave.SaveToFile();
