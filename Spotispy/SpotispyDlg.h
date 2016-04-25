@@ -3,7 +3,7 @@
 #include "SpotifyAnalyzer.h"
 #include "JSONSaveFile.h"
 
-const std::wstring SPOTISPY_VERSION = L"v0.4.2";
+const std::wstring SPOTISPY_VERSION = L"v0.4.3";
 const std::wstring SPOTISPY_BUILD_DATE = L"14.03.2016";
 
 class UpdateNotifier;
@@ -28,7 +28,7 @@ public:
 	bool GetSaveTwitchInfo() const noexcept;
 
 protected:
-	void DoDataExchange(CDataExchange* pDX) override;	// DDX/DDV-Unterstützung
+	void DoDataExchange(CDataExchange* pDX) override;
 
 private:
 	void OnTimer(UINT nIDEvent);
@@ -39,6 +39,8 @@ private:
 	afx_msg void OnBnClickedCheckSaveTwitchInfo();
 	afx_msg void OnBnClickedButtonSaveTwitchFormat();
 	afx_msg void OnBnClickedButtonSaveAdText();
+	afx_msg void OnBnClickedButtonSaveStreamInfo();
+	afx_msg void OnNMClickSyslinkCheckUpdate(NMHDR *pNMHDR, LRESULT *pResult);
 
 	BOOL OnInitDialog() override;
 	afx_msg void OnPaint();
@@ -61,9 +63,7 @@ private:
 	std::wstring m_adText;
 
 	std::wstring m_bufferedPlayString;
-public:
-	afx_msg void OnBnClickedButtonSaveStreamInfo();
-	afx_msg void OnNMClickSyslinkCheckUpdate(NMHDR *pNMHDR, LRESULT *pResult);
+
 };
 
 BOOL CALLBACK EnumWindowsProc_GetWindowTitle(HWND hwnd, LPARAM lParam);

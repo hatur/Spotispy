@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Poco/Net/Context.h"
+#include "Poco/Net/HTTPSClientSession.h"
 
 struct SpotifyMetaData {
 	unsigned int m_spotifyVersion;
@@ -95,6 +96,8 @@ private:
 	std::string m_oauth {};
 	std::string m_csrf {};
 
+	std::unique_ptr<Poco::Net::HTTPSClientSession> m_metaSession {nullptr};
+	std::string m_metaPath;
 	std::atomic<bool> m_spotifyNeedsRestart {false};
 	bool m_metaDataInitialized {false};
 	SpotifyMetaData m_bufferedMetaData {};

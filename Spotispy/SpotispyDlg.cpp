@@ -212,7 +212,7 @@ void CSpotispyDlg::OnTimer(UINT nIDEvent) {
 			auto showUpdateInformationDefault = true;
 			auto showUpdateInformation = m_dlgSave.GetOrSaveDefault("showUpdateInformation", showUpdateInformationDefault);
 
-			if (currentVersion.m_buildDate != availableVersion.m_buildDate && showUpdateInformation == true) {
+			if (currentVersion.m_version != availableVersion.m_version && showUpdateInformation == true) {
 				UpdateDlg dialog{currentVersion, availableVersion, L"https://github.com/hatur/Spotispy/releases"};
 				auto response = dialog.DoModal();
 

@@ -8,7 +8,6 @@
 #include "Poco/Path.h"
 #include "Poco/Exception.h"
 #include "Poco/Net/HTTPClientSession.h"
-#include "Poco/Net/HTTPSClientSession.h"
 #include "Poco/Net/HTTPRequest.h"
 #include "Poco/Net/HTTPResponse.h"
 
@@ -157,7 +156,11 @@ void SpotifyWebHook::RefreshMetaData() {
 	using namespace Poco::Net;
 	using namespace Poco::JSON;
 
-	try {
+	if (m_metaSession == nullptr || !m_metaSession->connected()) {
+		if (m_metaSession != nullptr) {
+			m_metaSession.reset();
+		}
+
 		URI uri;
 		uri.setScheme("https");
 		uri.setAuthority(m_localHost);
@@ -165,19 +168,23 @@ void SpotifyWebHook::RefreshMetaData() {
 		uri.setPort(m_localPort);
 		uri.addQueryParameter("oauth", m_oauth);
 		uri.addQueryParameter("csrf", m_csrf);
-		std::string path{uri.getPathAndQuery()};
+		m_metaPath = uri.getPathAndQuery();
 
-		HTTPSClientSession session{uri.getHost(), uri.getPort(), g_sslContext};
-		HTTPRequest request{HTTPRequest::HTTP_GET, path, HTTPMessage::HTTP_1_1};
+		m_metaSession = std::make_unique<HTTPSClientSession>(uri.getHost(), uri.getPort(), g_sslContext);
+		m_metaSession->setKeepAlive(true);
+	}
+
+	try {
+		HTTPRequest request{HTTPRequest::HTTP_GET, m_metaPath, HTTPMessage::HTTP_1_1};
 		HTTPResponse response;
 
-		session.sendRequest(request);
+		m_metaSession->sendRequest(request);
+
+		auto& is = m_metaSession->receiveResponse(response);
 
 		if (response.getStatus() != HTTPResponse::HTTP_OK) {
 			throw std::exception(std::string{"Couldn't connect to local Spotify server: " + response.getReason() + ", when trying to get metadata"}.c_str());
 		}
-
-		auto& is = session.receiveResponse(response);
 
 		auto contentType = response.getContentType();
 
@@ -304,6 +311,8 @@ void SpotifyWebHook::RefreshMetaData() {
 		std::wostringstream errMsg;
 		errMsg << ex.what();
 		PushStatusEntry(EStatusEntryType::Error, errMsg.str());
+
+		m_metaSession.reset();
 
 		std::lock_guard<std::mutex> lock{m_mutex};
 		m_metaDataInitialized = false;
